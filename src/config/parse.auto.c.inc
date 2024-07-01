@@ -44,6 +44,7 @@ static const StringPub parseRuleValueStr[] =
     PARSE_RULE_STRPUB("latest"),                                                                                          // val/str
     PARSE_RULE_STRPUB("localhost"),                                                                                       // val/str
     PARSE_RULE_STRPUB("none"),                                                                                            // val/str
+    PARSE_RULE_STRPUB("off"),                                                                                             // val/str
     PARSE_RULE_STRPUB("pause"),                                                                                           // val/str
     PARSE_RULE_STRPUB("pgbackrest"),                                                                                      // val/str
     PARSE_RULE_STRPUB("posix"),                                                                                           // val/str
@@ -96,6 +97,7 @@ typedef enum
     parseRuleValStrQT_latest_QT,                                                                                     // val/str/enum
     parseRuleValStrQT_localhost_QT,                                                                                  // val/str/enum
     parseRuleValStrQT_none_QT,                                                                                       // val/str/enum
+    parseRuleValStrQT_off_QT,                                                                                        // val/str/enum
     parseRuleValStrQT_pause_QT,                                                                                      // val/str/enum
     parseRuleValStrQT_pgbackrest_QT,                                                                                 // val/str/enum
     parseRuleValStrQT_posix_QT,                                                                                      // val/str/enum
@@ -595,6 +597,7 @@ static const ParseRuleCommand parseRuleCommand[CFG_COMMAND_TOTAL] =
     (                                                                                                           // cmd/stanza-create
         PARSE_RULE_COMMAND_NAME("stanza-create"),                                                               // cmd/stanza-create
         PARSE_RULE_COMMAND_LOCK_REQUIRED(true),                                                                 // cmd/stanza-create
+        PARSE_RULE_COMMAND_LOCK_REMOTE_REQUIRED(true),                                                          // cmd/stanza-create
         PARSE_RULE_COMMAND_LOCK_TYPE(lockTypeAll),                                                              // cmd/stanza-create
         PARSE_RULE_COMMAND_LOG_FILE(true),                                                                      // cmd/stanza-create
         PARSE_RULE_COMMAND_LOG_LEVEL_DEFAULT(logLevelInfo),                                                     // cmd/stanza-create
@@ -610,6 +613,7 @@ static const ParseRuleCommand parseRuleCommand[CFG_COMMAND_TOTAL] =
     (                                                                                                           // cmd/stanza-delete
         PARSE_RULE_COMMAND_NAME("stanza-delete"),                                                               // cmd/stanza-delete
         PARSE_RULE_COMMAND_LOCK_REQUIRED(true),                                                                 // cmd/stanza-delete
+        PARSE_RULE_COMMAND_LOCK_REMOTE_REQUIRED(true),                                                          // cmd/stanza-delete
         PARSE_RULE_COMMAND_LOCK_TYPE(lockTypeAll),                                                              // cmd/stanza-delete
         PARSE_RULE_COMMAND_LOG_FILE(true),                                                                      // cmd/stanza-delete
         PARSE_RULE_COMMAND_LOG_LEVEL_DEFAULT(logLevelInfo),                                                     // cmd/stanza-delete
@@ -625,6 +629,7 @@ static const ParseRuleCommand parseRuleCommand[CFG_COMMAND_TOTAL] =
     (                                                                                                          // cmd/stanza-upgrade
         PARSE_RULE_COMMAND_NAME("stanza-upgrade"),                                                             // cmd/stanza-upgrade
         PARSE_RULE_COMMAND_LOCK_REQUIRED(true),                                                                // cmd/stanza-upgrade
+        PARSE_RULE_COMMAND_LOCK_REMOTE_REQUIRED(true),                                                         // cmd/stanza-upgrade
         PARSE_RULE_COMMAND_LOCK_TYPE(lockTypeAll),                                                             // cmd/stanza-upgrade
         PARSE_RULE_COMMAND_LOG_FILE(true),                                                                     // cmd/stanza-upgrade
         PARSE_RULE_COMMAND_LOG_LEVEL_DEFAULT(logLevelInfo),                                                    // cmd/stanza-upgrade
@@ -2811,8 +2816,8 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
                                                                                                              // opt/log-level-stderr
                 PARSE_RULE_OPTIONAL_DEFAULT                                                                  // opt/log-level-stderr
                 (                                                                                            // opt/log-level-stderr
-                    PARSE_RULE_VAL_STRID(parseRuleValStrIdWarn),                                             // opt/log-level-stderr
-                    PARSE_RULE_VAL_STR(parseRuleValStrQT_warn_QT),                                           // opt/log-level-stderr
+                    PARSE_RULE_VAL_STRID(parseRuleValStrIdOff),                                              // opt/log-level-stderr
+                    PARSE_RULE_VAL_STR(parseRuleValStrQT_off_QT),                                            // opt/log-level-stderr
                 ),                                                                                           // opt/log-level-stderr
             ),                                                                                               // opt/log-level-stderr
         ),                                                                                                   // opt/log-level-stderr
@@ -3314,7 +3319,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                            // opt/pg-database
         PARSE_RULE_OPTION_REQUIRED(true),                                                                         // opt/pg-database
         PARSE_RULE_OPTION_SECTION(cfgSectionStanza),                                                              // opt/pg-database
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                     // opt/pg-database
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpPg),                                                                  // opt/pg-database
                                                                                                                   // opt/pg-database
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                            // opt/pg-database
@@ -3364,7 +3368,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                                // opt/pg-host
         PARSE_RULE_OPTION_REQUIRED(false),                                                                            // opt/pg-host
         PARSE_RULE_OPTION_SECTION(cfgSectionStanza),                                                                  // opt/pg-host
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                         // opt/pg-host
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpPg),                                                                      // opt/pg-host
                                                                                                                       // opt/pg-host
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                                // opt/pg-host
@@ -3414,7 +3417,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                        // opt/pg-host-ca-file
         PARSE_RULE_OPTION_REQUIRED(false),                                                                    // opt/pg-host-ca-file
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                          // opt/pg-host-ca-file
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                 // opt/pg-host-ca-file
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpPg),                                                              // opt/pg-host-ca-file
                                                                                                               // opt/pg-host-ca-file
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                        // opt/pg-host-ca-file
@@ -3464,7 +3466,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                        // opt/pg-host-ca-path
         PARSE_RULE_OPTION_REQUIRED(false),                                                                    // opt/pg-host-ca-path
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                          // opt/pg-host-ca-path
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                 // opt/pg-host-ca-path
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpPg),                                                              // opt/pg-host-ca-path
                                                                                                               // opt/pg-host-ca-path
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                        // opt/pg-host-ca-path
@@ -3514,7 +3515,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                      // opt/pg-host-cert-file
         PARSE_RULE_OPTION_REQUIRED(true),                                                                   // opt/pg-host-cert-file
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                        // opt/pg-host-cert-file
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                               // opt/pg-host-cert-file
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpPg),                                                            // opt/pg-host-cert-file
                                                                                                             // opt/pg-host-cert-file
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                      // opt/pg-host-cert-file
@@ -3564,7 +3564,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                            // opt/pg-host-cmd
         PARSE_RULE_OPTION_REQUIRED(false),                                                                        // opt/pg-host-cmd
         PARSE_RULE_OPTION_SECTION(cfgSectionStanza),                                                              // opt/pg-host-cmd
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                     // opt/pg-host-cmd
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpPg),                                                                  // opt/pg-host-cmd
                                                                                                                   // opt/pg-host-cmd
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                            // opt/pg-host-cmd
@@ -3601,7 +3600,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                         // opt/pg-host-config
         PARSE_RULE_OPTION_REQUIRED(true),                                                                      // opt/pg-host-config
         PARSE_RULE_OPTION_SECTION(cfgSectionStanza),                                                           // opt/pg-host-config
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                  // opt/pg-host-config
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpPg),                                                               // opt/pg-host-config
                                                                                                                // opt/pg-host-config
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                         // opt/pg-host-config
@@ -3643,7 +3641,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                            // opt/pg-host-config-include-path
         PARSE_RULE_OPTION_REQUIRED(false),                                                        // opt/pg-host-config-include-path
         PARSE_RULE_OPTION_SECTION(cfgSectionStanza),                                              // opt/pg-host-config-include-path
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                     // opt/pg-host-config-include-path
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpPg),                                                  // opt/pg-host-config-include-path
                                                                                                   // opt/pg-host-config-include-path
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                            // opt/pg-host-config-include-path
@@ -3685,7 +3682,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                    // opt/pg-host-config-path
         PARSE_RULE_OPTION_REQUIRED(false),                                                                // opt/pg-host-config-path
         PARSE_RULE_OPTION_SECTION(cfgSectionStanza),                                                      // opt/pg-host-config-path
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                             // opt/pg-host-config-path
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpPg),                                                          // opt/pg-host-config-path
                                                                                                           // opt/pg-host-config-path
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                    // opt/pg-host-config-path
@@ -3727,7 +3723,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                       // opt/pg-host-key-file
         PARSE_RULE_OPTION_REQUIRED(true),                                                                    // opt/pg-host-key-file
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                         // opt/pg-host-key-file
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                // opt/pg-host-key-file
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpPg),                                                             // opt/pg-host-key-file
                                                                                                              // opt/pg-host-key-file
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                       // opt/pg-host-key-file
@@ -3777,7 +3772,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                           // opt/pg-host-port
         PARSE_RULE_OPTION_REQUIRED(false),                                                                       // opt/pg-host-port
         PARSE_RULE_OPTION_SECTION(cfgSectionStanza),                                                             // opt/pg-host-port
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                    // opt/pg-host-port
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpPg),                                                                 // opt/pg-host-port
                                                                                                                  // opt/pg-host-port
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                           // opt/pg-host-port
@@ -3820,7 +3814,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                           // opt/pg-host-type
         PARSE_RULE_OPTION_REQUIRED(true),                                                                        // opt/pg-host-type
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                             // opt/pg-host-type
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                    // opt/pg-host-type
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpPg),                                                                 // opt/pg-host-type
                                                                                                                  // opt/pg-host-type
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                           // opt/pg-host-type
@@ -3882,7 +3875,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                           // opt/pg-host-user
         PARSE_RULE_OPTION_REQUIRED(false),                                                                       // opt/pg-host-user
         PARSE_RULE_OPTION_SECTION(cfgSectionStanza),                                                             // opt/pg-host-user
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                    // opt/pg-host-user
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpPg),                                                                 // opt/pg-host-user
                                                                                                                  // opt/pg-host-user
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                           // opt/pg-host-user
@@ -3925,7 +3917,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                               // opt/pg-local
         PARSE_RULE_OPTION_REQUIRED(true),                                                                            // opt/pg-local
         PARSE_RULE_OPTION_SECTION(cfgSectionStanza),                                                                 // opt/pg-local
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                        // opt/pg-local
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpPg),                                                                     // opt/pg-local
                                                                                                                      // opt/pg-local
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                               // opt/pg-local
@@ -3974,7 +3965,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                                // opt/pg-path
         PARSE_RULE_OPTION_REQUIRED(true),                                                                             // opt/pg-path
         PARSE_RULE_OPTION_SECTION(cfgSectionStanza),                                                                  // opt/pg-path
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                         // opt/pg-path
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpPg),                                                                      // opt/pg-path
                                                                                                                       // opt/pg-path
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                                // opt/pg-path
@@ -4052,7 +4042,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                                // opt/pg-port
         PARSE_RULE_OPTION_REQUIRED(true),                                                                             // opt/pg-port
         PARSE_RULE_OPTION_SECTION(cfgSectionStanza),                                                                  // opt/pg-port
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                         // opt/pg-port
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpPg),                                                                      // opt/pg-port
                                                                                                                       // opt/pg-port
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                                // opt/pg-port
@@ -4109,7 +4098,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                         // opt/pg-socket-path
         PARSE_RULE_OPTION_REQUIRED(false),                                                                     // opt/pg-socket-path
         PARSE_RULE_OPTION_SECTION(cfgSectionStanza),                                                           // opt/pg-socket-path
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                  // opt/pg-socket-path
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpPg),                                                               // opt/pg-socket-path
                                                                                                                // opt/pg-socket-path
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                         // opt/pg-socket-path
@@ -4154,7 +4142,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                                // opt/pg-user
         PARSE_RULE_OPTION_REQUIRED(false),                                                                            // opt/pg-user
         PARSE_RULE_OPTION_SECTION(cfgSectionStanza),                                                                  // opt/pg-user
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                         // opt/pg-user
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpPg),                                                                      // opt/pg-user
                                                                                                                       // opt/pg-user
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                                // opt/pg-user
@@ -4646,7 +4633,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_REQUIRED(true),                                                                  // opt/repo-azure-account
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                       // opt/repo-azure-account
         PARSE_RULE_OPTION_SECURE(true),                                                                    // opt/repo-azure-account
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                              // opt/repo-azure-account
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                         // opt/repo-azure-account
                                                                                                            // opt/repo-azure-account
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                     // opt/repo-azure-account
@@ -4726,7 +4712,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                   // opt/repo-azure-container
         PARSE_RULE_OPTION_REQUIRED(true),                                                                // opt/repo-azure-container
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                     // opt/repo-azure-container
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                            // opt/repo-azure-container
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                       // opt/repo-azure-container
                                                                                                          // opt/repo-azure-container
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                   // opt/repo-azure-container
@@ -4807,7 +4792,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_REQUIRED(true),                                                                 // opt/repo-azure-endpoint
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                      // opt/repo-azure-endpoint
         PARSE_RULE_OPTION_SECURE(true),                                                                   // opt/repo-azure-endpoint
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                             // opt/repo-azure-endpoint
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                        // opt/repo-azure-endpoint
                                                                                                           // opt/repo-azure-endpoint
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                    // opt/repo-azure-endpoint
@@ -4893,7 +4877,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_REQUIRED(false),                                                                     // opt/repo-azure-key
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                           // opt/repo-azure-key
         PARSE_RULE_OPTION_SECURE(true),                                                                        // opt/repo-azure-key
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                  // opt/repo-azure-key
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                             // opt/repo-azure-key
                                                                                                                // opt/repo-azure-key
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                         // opt/repo-azure-key
@@ -4974,7 +4957,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                    // opt/repo-azure-key-type
         PARSE_RULE_OPTION_REQUIRED(true),                                                                 // opt/repo-azure-key-type
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                      // opt/repo-azure-key-type
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                             // opt/repo-azure-key-type
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                        // opt/repo-azure-key-type
                                                                                                           // opt/repo-azure-key-type
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                    // opt/repo-azure-key-type
@@ -5067,7 +5049,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                   // opt/repo-azure-uri-style
         PARSE_RULE_OPTION_REQUIRED(true),                                                                // opt/repo-azure-uri-style
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                     // opt/repo-azure-uri-style
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                            // opt/repo-azure-uri-style
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                       // opt/repo-azure-uri-style
                                                                                                          // opt/repo-azure-uri-style
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                   // opt/repo-azure-uri-style
@@ -5160,7 +5141,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                             // opt/repo-block
         PARSE_RULE_OPTION_REQUIRED(true),                                                                          // opt/repo-block
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                               // opt/repo-block
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                      // opt/repo-block
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                                 // opt/repo-block
                                                                                                                    // opt/repo-block
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                             // opt/repo-block
@@ -5195,7 +5175,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_REQUIRED(false),                                                                 // opt/repo-block-age-map
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                       // opt/repo-block-age-map
         PARSE_RULE_OPTION_MULTI(true),                                                                     // opt/repo-block-age-map
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                              // opt/repo-block-age-map
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                         // opt/repo-block-age-map
                                                                                                            // opt/repo-block-age-map
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                     // opt/repo-block-age-map
@@ -5224,7 +5203,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_REQUIRED(false),                                                       // opt/repo-block-checksum-size-map
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                             // opt/repo-block-checksum-size-map
         PARSE_RULE_OPTION_MULTI(true),                                                           // opt/repo-block-checksum-size-map
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                    // opt/repo-block-checksum-size-map
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                               // opt/repo-block-checksum-size-map
                                                                                                  // opt/repo-block-checksum-size-map
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                           // opt/repo-block-checksum-size-map
@@ -5253,7 +5231,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_REQUIRED(false),                                                                // opt/repo-block-size-map
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                      // opt/repo-block-size-map
         PARSE_RULE_OPTION_MULTI(true),                                                                    // opt/repo-block-size-map
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                             // opt/repo-block-size-map
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                        // opt/repo-block-size-map
                                                                                                           // opt/repo-block-size-map
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                    // opt/repo-block-size-map
@@ -5281,7 +5258,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                  // opt/repo-block-size-super
         PARSE_RULE_OPTION_REQUIRED(true),                                                               // opt/repo-block-size-super
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                    // opt/repo-block-size-super
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                           // opt/repo-block-size-super
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                      // opt/repo-block-size-super
                                                                                                         // opt/repo-block-size-super
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                  // opt/repo-block-size-super
@@ -5321,7 +5297,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                             // opt/repo-block-size-super-full
         PARSE_RULE_OPTION_REQUIRED(true),                                                          // opt/repo-block-size-super-full
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                               // opt/repo-block-size-super-full
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                      // opt/repo-block-size-super-full
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                 // opt/repo-block-size-super-full
                                                                                                    // opt/repo-block-size-super-full
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                             // opt/repo-block-size-super-full
@@ -5362,7 +5337,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                            // opt/repo-bundle
         PARSE_RULE_OPTION_REQUIRED(true),                                                                         // opt/repo-bundle
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                              // opt/repo-bundle
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                     // opt/repo-bundle
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                                // opt/repo-bundle
                                                                                                                   // opt/repo-bundle
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                            // opt/repo-bundle
@@ -5389,7 +5363,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                      // opt/repo-bundle-limit
         PARSE_RULE_OPTION_REQUIRED(true),                                                                   // opt/repo-bundle-limit
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                        // opt/repo-bundle-limit
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                               // opt/repo-bundle-limit
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                          // opt/repo-bundle-limit
                                                                                                             // opt/repo-bundle-limit
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                      // opt/repo-bundle-limit
@@ -5429,7 +5402,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                       // opt/repo-bundle-size
         PARSE_RULE_OPTION_REQUIRED(true),                                                                    // opt/repo-bundle-size
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                         // opt/repo-bundle-size
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                // opt/repo-bundle-size
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                           // opt/repo-bundle-size
                                                                                                              // opt/repo-bundle-size
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                       // opt/repo-bundle-size
@@ -5470,7 +5442,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_REQUIRED(true),                                                                    // opt/repo-cipher-pass
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                         // opt/repo-cipher-pass
         PARSE_RULE_OPTION_SECURE(true),                                                                      // opt/repo-cipher-pass
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                // opt/repo-cipher-pass
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                           // opt/repo-cipher-pass
         PARSE_RULE_OPTION_DEPRECATE_MATCH(true),                                                             // opt/repo-cipher-pass
                                                                                                              // opt/repo-cipher-pass
@@ -5551,7 +5522,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                       // opt/repo-cipher-type
         PARSE_RULE_OPTION_REQUIRED(true),                                                                    // opt/repo-cipher-type
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                         // opt/repo-cipher-type
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                // opt/repo-cipher-type
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                           // opt/repo-cipher-type
         PARSE_RULE_OPTION_DEPRECATE_MATCH(true),                                                             // opt/repo-cipher-type
                                                                                                              // opt/repo-cipher-type
@@ -5638,7 +5608,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                        // opt/repo-gcs-bucket
         PARSE_RULE_OPTION_REQUIRED(true),                                                                     // opt/repo-gcs-bucket
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                          // opt/repo-gcs-bucket
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                 // opt/repo-gcs-bucket
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                            // opt/repo-gcs-bucket
                                                                                                               // opt/repo-gcs-bucket
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                        // opt/repo-gcs-bucket
@@ -5717,7 +5686,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                      // opt/repo-gcs-endpoint
         PARSE_RULE_OPTION_REQUIRED(true),                                                                   // opt/repo-gcs-endpoint
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                        // opt/repo-gcs-endpoint
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                               // opt/repo-gcs-endpoint
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                          // opt/repo-gcs-endpoint
                                                                                                             // opt/repo-gcs-endpoint
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                      // opt/repo-gcs-endpoint
@@ -5802,7 +5770,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_REQUIRED(true),                                                                        // opt/repo-gcs-key
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                             // opt/repo-gcs-key
         PARSE_RULE_OPTION_SECURE(true),                                                                          // opt/repo-gcs-key
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                    // opt/repo-gcs-key
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                               // opt/repo-gcs-key
                                                                                                                  // opt/repo-gcs-key
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                           // opt/repo-gcs-key
@@ -5883,7 +5850,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                      // opt/repo-gcs-key-type
         PARSE_RULE_OPTION_REQUIRED(true),                                                                   // opt/repo-gcs-key-type
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                        // opt/repo-gcs-key-type
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                               // opt/repo-gcs-key-type
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                          // opt/repo-gcs-key-type
                                                                                                             // opt/repo-gcs-key-type
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                      // opt/repo-gcs-key-type
@@ -5977,7 +5943,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                          // opt/repo-hardlink
         PARSE_RULE_OPTION_REQUIRED(true),                                                                       // opt/repo-hardlink
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                            // opt/repo-hardlink
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                   // opt/repo-hardlink
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                              // opt/repo-hardlink
                                                                                                                 // opt/repo-hardlink
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                          // opt/repo-hardlink
@@ -6011,7 +5976,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                              // opt/repo-host
         PARSE_RULE_OPTION_REQUIRED(false),                                                                          // opt/repo-host
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                                // opt/repo-host
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                       // opt/repo-host
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                                  // opt/repo-host
                                                                                                                     // opt/repo-host
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                              // opt/repo-host
@@ -6071,7 +6035,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                      // opt/repo-host-ca-file
         PARSE_RULE_OPTION_REQUIRED(false),                                                                  // opt/repo-host-ca-file
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                        // opt/repo-host-ca-file
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                               // opt/repo-host-ca-file
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                          // opt/repo-host-ca-file
                                                                                                             // opt/repo-host-ca-file
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                      // opt/repo-host-ca-file
@@ -6131,7 +6094,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                      // opt/repo-host-ca-path
         PARSE_RULE_OPTION_REQUIRED(false),                                                                  // opt/repo-host-ca-path
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                        // opt/repo-host-ca-path
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                               // opt/repo-host-ca-path
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                          // opt/repo-host-ca-path
                                                                                                             // opt/repo-host-ca-path
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                      // opt/repo-host-ca-path
@@ -6191,7 +6153,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                    // opt/repo-host-cert-file
         PARSE_RULE_OPTION_REQUIRED(true),                                                                 // opt/repo-host-cert-file
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                      // opt/repo-host-cert-file
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                             // opt/repo-host-cert-file
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                        // opt/repo-host-cert-file
                                                                                                           // opt/repo-host-cert-file
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                    // opt/repo-host-cert-file
@@ -6251,7 +6212,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                          // opt/repo-host-cmd
         PARSE_RULE_OPTION_REQUIRED(false),                                                                      // opt/repo-host-cmd
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                            // opt/repo-host-cmd
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                   // opt/repo-host-cmd
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                              // opt/repo-host-cmd
                                                                                                                 // opt/repo-host-cmd
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                          // opt/repo-host-cmd
@@ -6307,7 +6267,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                       // opt/repo-host-config
         PARSE_RULE_OPTION_REQUIRED(true),                                                                    // opt/repo-host-config
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                         // opt/repo-host-config
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                // opt/repo-host-config
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                           // opt/repo-host-config
                                                                                                              // opt/repo-host-config
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                       // opt/repo-host-config
@@ -6368,7 +6327,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                          // opt/repo-host-config-include-path
         PARSE_RULE_OPTION_REQUIRED(true),                                                       // opt/repo-host-config-include-path
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                            // opt/repo-host-config-include-path
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                   // opt/repo-host-config-include-path
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                              // opt/repo-host-config-include-path
                                                                                                 // opt/repo-host-config-include-path
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                          // opt/repo-host-config-include-path
@@ -6429,7 +6387,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                  // opt/repo-host-config-path
         PARSE_RULE_OPTION_REQUIRED(true),                                                               // opt/repo-host-config-path
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                    // opt/repo-host-config-path
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                           // opt/repo-host-config-path
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                      // opt/repo-host-config-path
                                                                                                         // opt/repo-host-config-path
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                  // opt/repo-host-config-path
@@ -6490,7 +6447,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                     // opt/repo-host-key-file
         PARSE_RULE_OPTION_REQUIRED(true),                                                                  // opt/repo-host-key-file
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                       // opt/repo-host-key-file
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                              // opt/repo-host-key-file
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                         // opt/repo-host-key-file
                                                                                                            // opt/repo-host-key-file
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                     // opt/repo-host-key-file
@@ -6550,7 +6506,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                         // opt/repo-host-port
         PARSE_RULE_OPTION_REQUIRED(false),                                                                     // opt/repo-host-port
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                           // opt/repo-host-port
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                  // opt/repo-host-port
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                             // opt/repo-host-port
                                                                                                                // opt/repo-host-port
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                         // opt/repo-host-port
@@ -6612,7 +6567,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                         // opt/repo-host-type
         PARSE_RULE_OPTION_REQUIRED(true),                                                                      // opt/repo-host-type
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                           // opt/repo-host-type
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                  // opt/repo-host-type
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                             // opt/repo-host-type
                                                                                                                // opt/repo-host-type
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                         // opt/repo-host-type
@@ -6684,7 +6638,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                         // opt/repo-host-user
         PARSE_RULE_OPTION_REQUIRED(false),                                                                     // opt/repo-host-user
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                           // opt/repo-host-user
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                  // opt/repo-host-user
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                             // opt/repo-host-user
                                                                                                                // opt/repo-host-user
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                         // opt/repo-host-user
@@ -6746,7 +6699,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                             // opt/repo-local
         PARSE_RULE_OPTION_REQUIRED(true),                                                                          // opt/repo-local
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                               // opt/repo-local
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                      // opt/repo-local
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                                 // opt/repo-local
                                                                                                                    // opt/repo-local
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                             // opt/repo-local
@@ -6805,7 +6757,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                              // opt/repo-path
         PARSE_RULE_OPTION_REQUIRED(true),                                                                           // opt/repo-path
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                                // opt/repo-path
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                       // opt/repo-path
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                                  // opt/repo-path
         PARSE_RULE_OPTION_DEPRECATE_MATCH(true),                                                                    // opt/repo-path
                                                                                                                     // opt/repo-path
@@ -6885,7 +6836,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                 // opt/repo-retention-archive
         PARSE_RULE_OPTION_REQUIRED(false),                                                             // opt/repo-retention-archive
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                   // opt/repo-retention-archive
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                          // opt/repo-retention-archive
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                     // opt/repo-retention-archive
                                                                                                        // opt/repo-retention-archive
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                 // opt/repo-retention-archive
@@ -6914,7 +6864,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                            // opt/repo-retention-archive-type
         PARSE_RULE_OPTION_REQUIRED(true),                                                         // opt/repo-retention-archive-type
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                              // opt/repo-retention-archive-type
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                     // opt/repo-retention-archive-type
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                // opt/repo-retention-archive-type
                                                                                                   // opt/repo-retention-archive-type
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                            // opt/repo-retention-archive-type
@@ -6950,7 +6899,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                    // opt/repo-retention-diff
         PARSE_RULE_OPTION_REQUIRED(false),                                                                // opt/repo-retention-diff
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                      // opt/repo-retention-diff
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                             // opt/repo-retention-diff
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                        // opt/repo-retention-diff
                                                                                                           // opt/repo-retention-diff
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                    // opt/repo-retention-diff
@@ -6979,7 +6927,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                    // opt/repo-retention-full
         PARSE_RULE_OPTION_REQUIRED(false),                                                                // opt/repo-retention-full
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                      // opt/repo-retention-full
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                             // opt/repo-retention-full
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                        // opt/repo-retention-full
                                                                                                           // opt/repo-retention-full
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                    // opt/repo-retention-full
@@ -7008,7 +6955,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                               // opt/repo-retention-full-type
         PARSE_RULE_OPTION_REQUIRED(true),                                                            // opt/repo-retention-full-type
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                 // opt/repo-retention-full-type
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                        // opt/repo-retention-full-type
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                   // opt/repo-retention-full-type
                                                                                                      // opt/repo-retention-full-type
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                               // opt/repo-retention-full-type
@@ -7043,7 +6989,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                 // opt/repo-retention-history
         PARSE_RULE_OPTION_REQUIRED(false),                                                             // opt/repo-retention-history
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                   // opt/repo-retention-history
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                          // opt/repo-retention-history
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                     // opt/repo-retention-history
                                                                                                        // opt/repo-retention-history
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                 // opt/repo-retention-history
@@ -7072,7 +7017,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                         // opt/repo-s3-bucket
         PARSE_RULE_OPTION_REQUIRED(true),                                                                      // opt/repo-s3-bucket
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                           // opt/repo-s3-bucket
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                  // opt/repo-s3-bucket
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                             // opt/repo-s3-bucket
         PARSE_RULE_OPTION_DEPRECATE_MATCH(true),                                                               // opt/repo-s3-bucket
                                                                                                                // opt/repo-s3-bucket
@@ -7153,7 +7097,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                       // opt/repo-s3-endpoint
         PARSE_RULE_OPTION_REQUIRED(true),                                                                    // opt/repo-s3-endpoint
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                         // opt/repo-s3-endpoint
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                // opt/repo-s3-endpoint
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                           // opt/repo-s3-endpoint
         PARSE_RULE_OPTION_DEPRECATE_MATCH(true),                                                             // opt/repo-s3-endpoint
                                                                                                              // opt/repo-s3-endpoint
@@ -7235,7 +7178,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_REQUIRED(true),                                                                         // opt/repo-s3-key
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                              // opt/repo-s3-key
         PARSE_RULE_OPTION_SECURE(true),                                                                           // opt/repo-s3-key
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                     // opt/repo-s3-key
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                                // opt/repo-s3-key
         PARSE_RULE_OPTION_DEPRECATE_MATCH(true),                                                                  // opt/repo-s3-key
                                                                                                                   // opt/repo-s3-key
@@ -7317,7 +7259,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_REQUIRED(true),                                                                  // opt/repo-s3-key-secret
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                       // opt/repo-s3-key-secret
         PARSE_RULE_OPTION_SECURE(true),                                                                    // opt/repo-s3-key-secret
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                              // opt/repo-s3-key-secret
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                         // opt/repo-s3-key-secret
         PARSE_RULE_OPTION_DEPRECATE_MATCH(true),                                                           // opt/repo-s3-key-secret
                                                                                                            // opt/repo-s3-key-secret
@@ -7398,7 +7339,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                       // opt/repo-s3-key-type
         PARSE_RULE_OPTION_REQUIRED(true),                                                                    // opt/repo-s3-key-type
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                         // opt/repo-s3-key-type
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                // opt/repo-s3-key-type
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                           // opt/repo-s3-key-type
                                                                                                              // opt/repo-s3-key-type
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                       // opt/repo-s3-key-type
@@ -7491,7 +7431,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                     // opt/repo-s3-kms-key-id
         PARSE_RULE_OPTION_REQUIRED(false),                                                                 // opt/repo-s3-kms-key-id
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                       // opt/repo-s3-kms-key-id
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                              // opt/repo-s3-kms-key-id
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                         // opt/repo-s3-kms-key-id
                                                                                                            // opt/repo-s3-kms-key-id
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                     // opt/repo-s3-kms-key-id
@@ -7571,7 +7510,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                         // opt/repo-s3-region
         PARSE_RULE_OPTION_REQUIRED(true),                                                                      // opt/repo-s3-region
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                           // opt/repo-s3-region
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                  // opt/repo-s3-region
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                             // opt/repo-s3-region
         PARSE_RULE_OPTION_DEPRECATE_MATCH(true),                                                               // opt/repo-s3-region
                                                                                                                // opt/repo-s3-region
@@ -7652,7 +7590,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                           // opt/repo-s3-role
         PARSE_RULE_OPTION_REQUIRED(false),                                                                       // opt/repo-s3-role
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                             // opt/repo-s3-role
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                    // opt/repo-s3-role
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                               // opt/repo-s3-role
                                                                                                                  // opt/repo-s3-role
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                           // opt/repo-s3-role
@@ -7733,7 +7670,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_REQUIRED(false),                                                           // opt/repo-s3-sse-customer-key
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                 // opt/repo-s3-sse-customer-key
         PARSE_RULE_OPTION_SECURE(true),                                                              // opt/repo-s3-sse-customer-key
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                        // opt/repo-s3-sse-customer-key
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                   // opt/repo-s3-sse-customer-key
                                                                                                      // opt/repo-s3-sse-customer-key
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                               // opt/repo-s3-sse-customer-key
@@ -7814,7 +7750,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_REQUIRED(false),                                                                      // opt/repo-s3-token
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                            // opt/repo-s3-token
         PARSE_RULE_OPTION_SECURE(true),                                                                         // opt/repo-s3-token
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                   // opt/repo-s3-token
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                              // opt/repo-s3-token
                                                                                                                 // opt/repo-s3-token
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                          // opt/repo-s3-token
@@ -7894,7 +7829,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                      // opt/repo-s3-uri-style
         PARSE_RULE_OPTION_REQUIRED(true),                                                                   // opt/repo-s3-uri-style
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                        // opt/repo-s3-uri-style
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                               // opt/repo-s3-uri-style
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                          // opt/repo-s3-uri-style
                                                                                                             // opt/repo-s3-uri-style
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                      // opt/repo-s3-uri-style
@@ -7986,7 +7920,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                         // opt/repo-sftp-host
         PARSE_RULE_OPTION_REQUIRED(true),                                                                      // opt/repo-sftp-host
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                           // opt/repo-sftp-host
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                  // opt/repo-sftp-host
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                             // opt/repo-sftp-host
                                                                                                                // opt/repo-sftp-host
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                         // opt/repo-sftp-host
@@ -8066,7 +7999,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                             // opt/repo-sftp-host-fingerprint
         PARSE_RULE_OPTION_REQUIRED(false),                                                         // opt/repo-sftp-host-fingerprint
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                               // opt/repo-sftp-host-fingerprint
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                      // opt/repo-sftp-host-fingerprint
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                 // opt/repo-sftp-host-fingerprint
                                                                                                    // opt/repo-sftp-host-fingerprint
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                             // opt/repo-sftp-host-fingerprint
@@ -8147,7 +8079,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                          // opt/repo-sftp-host-key-check-type
         PARSE_RULE_OPTION_REQUIRED(true),                                                       // opt/repo-sftp-host-key-check-type
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                            // opt/repo-sftp-host-key-check-type
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                   // opt/repo-sftp-host-key-check-type
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                              // opt/repo-sftp-host-key-check-type
                                                                                                 // opt/repo-sftp-host-key-check-type
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                          // opt/repo-sftp-host-key-check-type
@@ -8241,7 +8172,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                           // opt/repo-sftp-host-key-hash-type
         PARSE_RULE_OPTION_REQUIRED(true),                                                        // opt/repo-sftp-host-key-hash-type
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                             // opt/repo-sftp-host-key-hash-type
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                    // opt/repo-sftp-host-key-hash-type
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                               // opt/repo-sftp-host-key-hash-type
                                                                                                  // opt/repo-sftp-host-key-hash-type
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                           // opt/repo-sftp-host-key-hash-type
@@ -8328,7 +8258,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                    // opt/repo-sftp-host-port
         PARSE_RULE_OPTION_REQUIRED(true),                                                                 // opt/repo-sftp-host-port
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                      // opt/repo-sftp-host-port
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                             // opt/repo-sftp-host-port
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                        // opt/repo-sftp-host-port
                                                                                                           // opt/repo-sftp-host-port
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                    // opt/repo-sftp-host-port
@@ -8420,7 +8349,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                    // opt/repo-sftp-host-user
         PARSE_RULE_OPTION_REQUIRED(true),                                                                 // opt/repo-sftp-host-user
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                      // opt/repo-sftp-host-user
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                             // opt/repo-sftp-host-user
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                        // opt/repo-sftp-host-user
                                                                                                           // opt/repo-sftp-host-user
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                    // opt/repo-sftp-host-user
@@ -8501,7 +8429,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_REQUIRED(false),                                                               // opt/repo-sftp-known-host
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                     // opt/repo-sftp-known-host
         PARSE_RULE_OPTION_MULTI(true),                                                                   // opt/repo-sftp-known-host
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                            // opt/repo-sftp-known-host
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                       // opt/repo-sftp-known-host
                                                                                                          // opt/repo-sftp-known-host
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                   // opt/repo-sftp-known-host
@@ -8582,7 +8509,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                             // opt/repo-sftp-private-key-file
         PARSE_RULE_OPTION_REQUIRED(true),                                                          // opt/repo-sftp-private-key-file
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                               // opt/repo-sftp-private-key-file
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                      // opt/repo-sftp-private-key-file
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                 // opt/repo-sftp-private-key-file
                                                                                                    // opt/repo-sftp-private-key-file
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                             // opt/repo-sftp-private-key-file
@@ -8663,7 +8589,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_REQUIRED(false),                                                   // opt/repo-sftp-private-key-passphrase
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                         // opt/repo-sftp-private-key-passphrase
         PARSE_RULE_OPTION_SECURE(true),                                                      // opt/repo-sftp-private-key-passphrase
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                // opt/repo-sftp-private-key-passphrase
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                           // opt/repo-sftp-private-key-passphrase
                                                                                              // opt/repo-sftp-private-key-passphrase
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                       // opt/repo-sftp-private-key-passphrase
@@ -8743,7 +8668,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                              // opt/repo-sftp-public-key-file
         PARSE_RULE_OPTION_REQUIRED(false),                                                          // opt/repo-sftp-public-key-file
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                // opt/repo-sftp-public-key-file
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                       // opt/repo-sftp-public-key-file
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                  // opt/repo-sftp-public-key-file
                                                                                                     // opt/repo-sftp-public-key-file
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                              // opt/repo-sftp-public-key-file
@@ -8823,7 +8747,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                   // opt/repo-storage-ca-file
         PARSE_RULE_OPTION_REQUIRED(false),                                                               // opt/repo-storage-ca-file
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                     // opt/repo-storage-ca-file
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                            // opt/repo-storage-ca-file
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                       // opt/repo-storage-ca-file
                                                                                                          // opt/repo-storage-ca-file
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                   // opt/repo-storage-ca-file
@@ -8905,7 +8828,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                   // opt/repo-storage-ca-path
         PARSE_RULE_OPTION_REQUIRED(false),                                                               // opt/repo-storage-ca-path
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                     // opt/repo-storage-ca-path
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                            // opt/repo-storage-ca-path
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                       // opt/repo-storage-ca-path
                                                                                                          // opt/repo-storage-ca-path
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                   // opt/repo-storage-ca-path
@@ -8987,7 +8909,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                      // opt/repo-storage-host
         PARSE_RULE_OPTION_REQUIRED(false),                                                                  // opt/repo-storage-host
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                        // opt/repo-storage-host
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                               // opt/repo-storage-host
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                          // opt/repo-storage-host
                                                                                                             // opt/repo-storage-host
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                      // opt/repo-storage-host
@@ -9068,7 +8989,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                      // opt/repo-storage-port
         PARSE_RULE_OPTION_REQUIRED(true),                                                                   // opt/repo-storage-port
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                        // opt/repo-storage-port
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                               // opt/repo-storage-port
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                          // opt/repo-storage-port
                                                                                                             // opt/repo-storage-port
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                      // opt/repo-storage-port
@@ -9162,7 +9082,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_REQUIRED(false),                                                                   // opt/repo-storage-tag
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                         // opt/repo-storage-tag
         PARSE_RULE_OPTION_MULTI(true),                                                                       // opt/repo-storage-tag
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                // opt/repo-storage-tag
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                           // opt/repo-storage-tag
                                                                                                              // opt/repo-storage-tag
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                       // opt/repo-storage-tag
@@ -9244,7 +9163,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                         // opt/repo-storage-upload-chunk-size
         PARSE_RULE_OPTION_REQUIRED(false),                                                     // opt/repo-storage-upload-chunk-size
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                           // opt/repo-storage-upload-chunk-size
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                  // opt/repo-storage-upload-chunk-size
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                             // opt/repo-storage-upload-chunk-size
                                                                                                // opt/repo-storage-upload-chunk-size
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                         // opt/repo-storage-upload-chunk-size
@@ -9333,7 +9251,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                // opt/repo-storage-verify-tls
         PARSE_RULE_OPTION_REQUIRED(true),                                                             // opt/repo-storage-verify-tls
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                  // opt/repo-storage-verify-tls
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                         // opt/repo-storage-verify-tls
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                    // opt/repo-storage-verify-tls
                                                                                                       // opt/repo-storage-verify-tls
         PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                // opt/repo-storage-verify-tls
@@ -9420,7 +9337,6 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_RESET(true),                                                                              // opt/repo-type
         PARSE_RULE_OPTION_REQUIRED(true),                                                                           // opt/repo-type
         PARSE_RULE_OPTION_SECTION(cfgSectionGlobal),                                                                // opt/repo-type
-        PARSE_RULE_OPTION_GROUP_MEMBER(true),                                                                       // opt/repo-type
         PARSE_RULE_OPTION_GROUP_ID(cfgOptGrpRepo),                                                                  // opt/repo-type
         PARSE_RULE_OPTION_DEPRECATE_MATCH(true),                                                                    // opt/repo-type
                                                                                                                     // opt/repo-type
