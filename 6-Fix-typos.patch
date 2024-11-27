@@ -1,0 +1,446 @@
+From b139324432a59c32d9d7ee11e6b448921f3b71e8 Mon Sep 17 00:00:00 2001
+From: Kian-Meng Ang <kianmeng.ang@gmail.com>
+Date: Sat, 23 Nov 2024 04:25:43 +0800
+Subject: [PATCH 6/9] Fix typos.
+
+Found using `codespell -S *.eps,*.cache,*.xml -L inout,te,fo,bload,fase,collet,hilight,debians,keep-alives` and `typos --hidden --format brief`.
+---
+ doc/lib/pgBackRestDoc/Common/DocConfig.pm       |  2 +-
+ doc/lib/pgBackRestDoc/Common/DocExecute.pm      |  2 +-
+ doc/xml/user-guide.xml                          |  2 +-
+ src/command/restore/restore.c                   |  2 +-
+ src/command/verify/verify.c                     |  4 ++--
+ src/common/memContext.h                         |  2 +-
+ src/config/config.c                             |  4 ++--
+ src/config/parse.c                              |  4 ++--
+ src/info/manifest.c                             |  2 +-
+ src/storage/remote/protocol.c                   |  2 +-
+ src/storage/sftp/storage.c                      |  2 +-
+ src/storage/storage.h                           |  2 +-
+ test/lib/pgBackRestTest/Common/ContainerTest.pm |  2 +-
+ test/src/common/harnessDebug.h                  |  2 +-
+ test/src/common/harnessHost.h                   |  2 +-
+ test/src/common/harnessLibSsh2.h                |  2 +-
+ test/src/common/harnessLog.c                    |  2 +-
+ test/src/common/harnessProtocol.h               |  4 ++--
+ test/src/common/harnessStorage.c                |  4 ++--
+ test/src/module/command/backupTest.c            |  2 +-
+ test/src/module/command/restoreTest.c           | 10 +++++-----
+ test/src/module/db/dbTest.c                     |  4 ++--
+ test/src/module/info/manifestTest.c             |  2 +-
+ test/src/module/performance/storageTest.c       |  2 +-
+ test/src/module/storage/sftpTest.c              |  2 +-
+ 25 files changed, 35 insertions(+), 35 deletions(-)
+
+diff --git a/doc/lib/pgBackRestDoc/Common/DocConfig.pm b/doc/lib/pgBackRestDoc/Common/DocConfig.pm
+index b4666a6a5..885659447 100644
+--- a/doc/lib/pgBackRestDoc/Common/DocConfig.pm
++++ b/doc/lib/pgBackRestDoc/Common/DocConfig.pm
+@@ -265,7 +265,7 @@ sub process
+             $oCommandOption->{&CONFIG_HELP_INTERNAL} =
+                 cfgDefineCommand()->{$strCommand}{&CFGDEF_INTERNAL} ? true : $oOptionDefine->{$strOption}{&CFGDEF_INTERNAL};
+ 
+-            # If internal is defined for the option/command it overrides everthing else
++            # If internal is defined for the option/command it overrides everything else
+             if (defined($oOptionDefine->{$strOption}{&CFGDEF_COMMAND}{$strCommand}{&CFGDEF_INTERNAL}))
+             {
+                 $oCommandOption->{&CONFIG_HELP_INTERNAL} =
+diff --git a/doc/lib/pgBackRestDoc/Common/DocExecute.pm b/doc/lib/pgBackRestDoc/Common/DocExecute.pm
+index 88580b74d..aa0f9d7e4 100644
+--- a/doc/lib/pgBackRestDoc/Common/DocExecute.pm
++++ b/doc/lib/pgBackRestDoc/Common/DocExecute.pm
+@@ -933,7 +933,7 @@ sub cachePush
+ }
+ 
+ ####################################################################################################################################
+-# sectionChildProcesss
++# sectionChildProcess
+ ####################################################################################################################################
+ sub sectionChildProcess
+ {
+diff --git a/doc/xml/user-guide.xml b/doc/xml/user-guide.xml
+index bd7620b8e..0cfa81619 100644
+--- a/doc/xml/user-guide.xml
++++ b/doc/xml/user-guide.xml
+@@ -227,7 +227,7 @@
+         <!-- Data used to demonstrate backup/restore operations -->
+         <variable key="test-table-data">Important Data</variable>
+ 
+-        <!-- Database cluster commmands -->
++        <!-- Database cluster commands -->
+         <variable key="pg-cluster-wait">sleep 2</variable>
+ 
+         <variable key="pg-cluster-create" if="{[os-type-is-debian]}">pg_createcluster {[pg-version]} {[postgres-cluster-demo]}</variable>
+diff --git a/src/command/restore/restore.c b/src/command/restore/restore.c
+index b1004f689..b86894790 100644
+--- a/src/command/restore/restore.c
++++ b/src/command/restore/restore.c
+@@ -1808,7 +1808,7 @@ restoreRecoveryWrite(const Manifest *const manifest, const StorageInfo *const fi
+         // If recovery type is preserve then leave recovery file as it is
+         if (cfgOptionStrId(cfgOptType) == CFGOPTVAL_TYPE_PRESERVE)
+         {
+-            // Determine which file recovery setttings will be written to
++            // Determine which file recovery settings will be written to
+             const String *const recoveryFile =
+                 pgVersion >= PG_VERSION_RECOVERY_GUC ? PG_FILE_POSTGRESQLAUTOCONF_STR : PG_FILE_RECOVERYCONF_STR;
+ 
+diff --git a/src/command/verify/verify.c b/src/command/verify/verify.c
+index 112a0e5b7..3113ebb66 100644
+--- a/src/command/verify/verify.c
++++ b/src/command/verify/verify.c
+@@ -109,7 +109,7 @@ typedef struct VerifyBackupResult
+     List *invalidFileList;                                          // List of invalid files found in the backup
+ } VerifyBackupResult;
+ 
+-// Job data stucture for processing and results collection
++// Job data structure for processing and results collection
+ typedef struct VerifyJobData
+ {
+     MemContext *memContext;                                         // Context for memory allocations in this struct
+@@ -855,7 +855,7 @@ verifyBackup(VerifyJobData *const jobData)
+                 VerifyBackupResult *const backupResult = lstGetLast(jobData->backupResultList);
+ 
+                 // If currentBackup is set (meaning the newest backup label on disk was not in the db:current section when the
+-                // backup.info file was read) and this is the same label, then set inProgessBackup to true, else false.
++                // backup.info file was read) and this is the same label, then set inProgressBackup to true, else false.
+                 // inProgressBackup may be changed in verifyManifestFile if a main backup.manifest exists since that would indicate
+                 // the backup completed during the verify process.
+                 const bool inProgressBackup = strEq(jobData->currentBackup, backupResult->backupLabel);
+diff --git a/src/common/memContext.h b/src/common/memContext.h
+index 5b80b00aa..6cf0457d6 100644
+--- a/src/common/memContext.h
++++ b/src/common/memContext.h
+@@ -228,7 +228,7 @@ nearest try block.
+ Use the MEM_CONTEXT*() macros when possible rather than reimplement the boilerplate for every memory context block.
+ ***********************************************************************************************************************************/
+ // Create a new mem context in the current mem context. The new context must be either kept with memContextKeep() or discarded with
+-// memContextDisard() before switching back from the parent context.
++// memContextDiscard() before switching back from the parent context.
+ typedef struct MemContextNewParam
+ {
+     VAR_PARAM_HEADER;
+diff --git a/src/config/config.c b/src/config/config.c
+index 148697788..935eb42d7 100644
+--- a/src/config/config.c
++++ b/src/config/config.c
+@@ -345,7 +345,7 @@ cfgOptionKeyToIdx(const ConfigOption optionId, const unsigned int key)
+     {
+         const unsigned int groupId = cfgOptionGroupId(optionId);
+ 
+-        // Seach the group for the key
++        // Search the group for the key
+         for (; result < cfgOptionGroupIdxTotal(groupId); result++)
+         {
+             if (configLocal->optionGroup[groupId].indexMap[result] == key - 1)
+@@ -639,7 +639,7 @@ cfgOptionIdxReset(const ConfigOption optionId, const unsigned int optionIdx)
+ }
+ 
+ /**********************************************************************************************************************************/
+-// Helper to enforce contraints when getting options
++// Helper to enforce constraints when getting options
+ static const ConfigOptionValue *
+ cfgOptionIdxInternal(
+     const ConfigOption optionId, const unsigned int optionIdx, const ConfigOptionDataType typeRequested, const bool nullAllowed)
+diff --git a/src/config/parse.c b/src/config/parse.c
+index a1c65ed89..63f99eb76 100644
+--- a/src/config/parse.c
++++ b/src/config/parse.c
+@@ -590,7 +590,7 @@ cfgParseOption(const String *const optionCandidate, const CfgParseOptionParam pa
+         if (dashPtr == optionName)
+             THROW_FMT(OptionInvalidError, "option '%s' cannot begin with a dash", strZ(optionCandidate));
+ 
+-        // Check if the first dash is preceeded by a numeric key and keep a tally of the key
++        // Check if the first dash is preceded by a numeric key and keep a tally of the key
+         char *numberPtr = dashPtr;
+         unsigned int multiplier = 1;
+ 
+@@ -938,7 +938,7 @@ cfgParseOptionalRule(
+             {
+                 PackRead *const groupList = pckReadNewC(ruleOption->pack, ruleOption->packSize);
+ 
+-                // Seach for a matching group
++                // Search for a matching group
+                 do
+                 {
+                     // Get the group pack
+diff --git a/src/info/manifest.c b/src/info/manifest.c
+index a622bf6c6..ca1a334ea 100644
+--- a/src/info/manifest.c
++++ b/src/info/manifest.c
+@@ -1472,7 +1472,7 @@ manifestNewBuild(
+                     // The filename must have characters
+                     ASSERT(relationFileId[0] != '\0');
+ 
+-                    // Store the last relation so it does not need to be found everytime
++                    // Store the last relation so it does not need to be found every time
+                     if (strcmp(lastRelationFileId, relationFileId) != 0)
+                     {
+                         // Determine if the relation is unlogged
+diff --git a/src/storage/remote/protocol.c b/src/storage/remote/protocol.c
+index faaad1d30..4714f6c0a 100644
+--- a/src/storage/remote/protocol.c
++++ b/src/storage/remote/protocol.c
+@@ -170,7 +170,7 @@ storageRemoteFeatureProtocol(PackRead *const param)
+ }
+ 
+ /**********************************************************************************************************************************/
+-typedef struct StorageRemoteInfoProcotolWriteData
++typedef struct StorageRemoteInfoProtocolWriteData
+ {
+     time_t timeModifiedLast;                                        // timeModified from last call
+     mode_t modeLast;                                                // mode from last call
+diff --git a/src/storage/sftp/storage.c b/src/storage/sftp/storage.c
+index 14b2621fc..14536dc6b 100644
+--- a/src/storage/sftp/storage.c
++++ b/src/storage/sftp/storage.c
+@@ -297,7 +297,7 @@ storageSftpUpdateKnownHostsFile(
+                 // Missing known_hosts file will return LIBSSH2_ERROR_FILE. Possibly issues other than missing may return this.
+                 if (rc == LIBSSH2_ERROR_FILE)
+                 {
+-                    // If user's known_hosts file is non-existant, create an empty one for libssh2 to operate on
++                    // If user's known_hosts file is non-existent, create an empty one for libssh2 to operate on
+                     const Storage *const sshStorage =
+                         storagePosixNewP(
+                             strNewFmt("%s%s", strZ(userHome()), "/.ssh"), .modeFile = 0600, .modePath = 0700, .write = true);
+diff --git a/src/storage/storage.h b/src/storage/storage.h
+index a62104ac5..d295dfdc0 100644
+--- a/src/storage/storage.h
++++ b/src/storage/storage.h
+@@ -46,7 +46,7 @@ typedef enum
+     // etc.) for storage that does not support paths.
+     storageFeaturePath,
+ 
+-    // Do paths need to be synced to ensure contents are durable? storeageFeaturePath must also be enabled.
++    // Do paths need to be synced to ensure contents are durable? storageFeaturePath must also be enabled.
+     storageFeaturePathSync,
+ 
+     // Does the storage support hardlinks? Hardlinks allow the same file to be linked into multiple paths to save space.
+diff --git a/test/lib/pgBackRestTest/Common/ContainerTest.pm b/test/lib/pgBackRestTest/Common/ContainerTest.pm
+index 6df59b433..b58fe905f 100644
+--- a/test/lib/pgBackRestTest/Common/ContainerTest.pm
++++ b/test/lib/pgBackRestTest/Common/ContainerTest.pm
+@@ -538,7 +538,7 @@ sub containerBuild
+             }
+         }
+ 
+-        # Add path to lastest version of postgres
++        # Add path to latest version of postgres
+         if ($$oVm{$strOS}{&VM_OS_BASE} eq VM_OS_BASE_RHEL)
+         {
+             $strScript .=
+diff --git a/test/src/common/harnessDebug.h b/test/src/common/harnessDebug.h
+index 263dd1501..871fa97e3 100644
+--- a/test/src/common/harnessDebug.h
++++ b/test/src/common/harnessDebug.h
+@@ -8,7 +8,7 @@ C Debug Harness
+ 
+ #include "common/debug.h"
+ 
+-// Set line numer of the current function in the stack trace. This is used to give more detailed info about which test macro caused
++// Set line number of the current function in the stack trace. This is used to give more detailed info about which test macro caused
+ // an error.
+ #ifdef DEBUG
+ #define FUNCTION_HARNESS_STACK_TRACE_LINE_SET(lineNo)                                                                              \
+diff --git a/test/src/common/harnessHost.h b/test/src/common/harnessHost.h
+index f362e49a8..7cfad97e4 100644
+--- a/test/src/common/harnessHost.h
++++ b/test/src/common/harnessHost.h
+@@ -388,7 +388,7 @@ hrnHostSqlValue(HrnHost *const this, const char *const statement)
+ }
+ 
+ #define HRN_HOST_SQL_VALUE(this, statement)                                                                                        \
+-    HRN_HOST_SQL(this, statement, pgClientQueryResulColumn)
++    HRN_HOST_SQL(this, statement, pgClientQueryResultColumn)
+ 
+ // Test a single value
+ void hrnHostSqlTest(HrnHost *this, const String *statement, const String *expected);
+diff --git a/test/src/common/harnessLibSsh2.h b/test/src/common/harnessLibSsh2.h
+index 918aa8a0c..973354313 100644
+--- a/test/src/common/harnessLibSsh2.h
++++ b/test/src/common/harnessLibSsh2.h
+@@ -71,7 +71,7 @@ Function constants
+ /***********************************************************************************************************************************
+ Macros for defining groups of functions that implement commands
+ ***********************************************************************************************************************************/
+-// Set of functions mimicking libssh2 inititialization and authorization
++// Set of functions mimicking libssh2 initialization and authorization
+ #define HRNLIBSSH2_MACRO_STARTUP()                                                                                                 \
+     {.function = HRNLIBSSH2_INIT, .param = "[0]", .resultInt = 0},                                                                 \
+     {.function = HRNLIBSSH2_SESSION_INIT_EX, .param = "[null,null,null,null]"},                                                    \
+diff --git a/test/src/common/harnessLog.c b/test/src/common/harnessLog.c
+index c83878601..a353d8b95 100644
+--- a/test/src/common/harnessLog.c
++++ b/test/src/common/harnessLog.c
+@@ -351,7 +351,7 @@ hrnLogReplace(void)
+                         if (!regExpMatch(logReplace->regExpSub, match))
+                         {
+                             THROW_FMT(
+-                                AssertError, "unable to find sub expression '%s' in '%s' extracted with expresion '%s'",
++                                AssertError, "unable to find sub expression '%s' in '%s' extracted with expression '%s'",
+                                 strZ(logReplace->expressionSub), strZ(match), strZ(logReplace->expression));
+                         }
+ 
+diff --git a/test/src/common/harnessProtocol.h b/test/src/common/harnessProtocol.h
+index 34b85c74a..9dde3c65f 100644
+--- a/test/src/common/harnessProtocol.h
++++ b/test/src/common/harnessProtocol.h
+@@ -6,13 +6,13 @@ Harness for Protocol Testing
+ /***********************************************************************************************************************************
+ Functions
+ ***********************************************************************************************************************************/
+-// Install/uninstall the shim that allows protocalLocalGet() to start a local in a forked process rather than being exec'd. The main
++// Install/uninstall the shim that allows protocolLocalGet() to start a local in a forked process rather than being exec'd. The main
+ // benefit is that code running in the forked process will be included in coverage so no separate tests for the local protocol
+ // functions should be required. A side benefit is that the pgbackrest binary does not need to be built since there is no exec.
+ void hrnProtocolLocalShimInstall(const ProtocolServerHandler *const handlerList, const unsigned int handlerListSize);
+ void hrnProtocolLocalShimUninstall(void);
+ 
+-// Install/uninstall the shim that allows protocalRemoteGet() to start a remote in a forked process rather than being exec'd via
++// Install/uninstall the shim that allows protocolRemoteGet() to start a remote in a forked process rather than being exec'd via
+ // SSH. The benefits are the same as hrnProtocolLocalShimInstall().
+ void hrnProtocolRemoteShimInstall(const ProtocolServerHandler *const handlerList, const unsigned int handlerListSize);
+ void hrnProtocolRemoteShimUninstall(void);
+diff --git a/test/src/common/harnessStorage.c b/test/src/common/harnessStorage.c
+index c55885b29..f42ffcb6c 100644
+--- a/test/src/common/harnessStorage.c
++++ b/test/src/common/harnessStorage.c
+@@ -60,7 +60,7 @@ testStorageGet(const Storage *const storage, const char *const file, const char
+     // Add compression extension if one exists
+     compressExtCat(fileFull, param.compressType);
+ 
+-    // Declare an information filter for displaying paramaters to the output
++    // Declare an information filter for displaying parameters to the output
+     String *const filter = strNew();
+ 
+     StorageRead *read = storageNewReadP(storage, fileFull, .ignoreMissing = param.nullOnMissing);
+@@ -373,7 +373,7 @@ hrnStoragePut(
+     StorageWrite *destination = storageNewWriteP(storage, fileStr, .modeFile = param.modeFile, .timeModified = param.timeModified);
+     IoFilterGroup *filterGroup = ioWriteFilterGroup(storageWriteIo(destination));
+ 
+-    // Declare an information filter for displaying paramaters to the output
++    // Declare an information filter for displaying parameters to the output
+     String *const filter = strNew();
+ 
+     // Add mode to output information filter
+diff --git a/test/src/module/command/backupTest.c b/test/src/module/command/backupTest.c
+index 34a0a3c9d..da89081a0 100644
+--- a/test/src/module/command/backupTest.c
++++ b/test/src/module/command/backupTest.c
+@@ -3135,7 +3135,7 @@ testRun(void)
+             memset(bufPtr(relationAfter), 0, bufSize(relationAfter));
+             bufUsedSet(relationAfter, bufSize(relationAfter));
+ 
+-            // Run backup. Make sure that the timeline selected converts to hexdecimal that can't be interpreted as decimal.
++            // Run backup. Make sure that the timeline selected converts to hexadecimal that can't be interpreted as decimal.
+             HRN_BACKUP_SCRIPT_SET(
+                 {.op = hrnBackupScriptOpUpdate, .file = storagePathP(storagePg(), STRDEF(PG_PATH_BASE "/1/1")),
+                  .time = backupTimeStart, .content = relationAfter});
+diff --git a/test/src/module/command/restoreTest.c b/test/src/module/command/restoreTest.c
+index 1a3e3b6c9..333c0a03c 100644
+--- a/test/src/module/command/restoreTest.c
++++ b/test/src/module/command/restoreTest.c
+@@ -2048,7 +2048,7 @@ testRun(void)
+     {
+         const String *pgPath = STRDEF(TEST_PATH "/pg");
+         const String *repoPath = STRDEF(TEST_PATH "/repo");
+-        const String *repoPathEncrpyt = STRDEF(TEST_PATH "/repo-encrypt");
++        const String *repoPathEncrypt = STRDEF(TEST_PATH "/repo-encrypt");
+ 
+         // Set log level to detail
+         harnessLogLevelSet(logLevelDetail);
+@@ -2081,7 +2081,7 @@ testRun(void)
+         argList = strLstNew();
+         hrnCfgArgRawZ(argList, cfgOptStanza, "test1");
+         hrnCfgArgKeyRaw(argList, cfgOptRepoPath, 1, repoPath);
+-        hrnCfgArgKeyRaw(argList, cfgOptRepoPath, 2, repoPathEncrpyt);
++        hrnCfgArgKeyRaw(argList, cfgOptRepoPath, 2, repoPathEncrypt);
+         hrnCfgArgRaw(argList, cfgOptPgPath, pgPath);
+         hrnCfgArgRawZ(argList, cfgOptSet, "20161219-212741F");
+         hrnCfgArgKeyRawStrId(argList, cfgOptRepoCipherType, 2, cipherTypeAes256Cbc);
+@@ -2204,7 +2204,7 @@ testRun(void)
+         argList = strLstNew();
+         hrnCfgArgRawZ(argList, cfgOptStanza, "test1");
+         hrnCfgArgKeyRaw(argList, cfgOptRepoPath, 1, repoPath);
+-        hrnCfgArgKeyRaw(argList, cfgOptRepoPath, 2, repoPathEncrpyt);
++        hrnCfgArgKeyRaw(argList, cfgOptRepoPath, 2, repoPathEncrypt);
+         hrnCfgArgRaw(argList, cfgOptPgPath, pgPath);
+         hrnCfgArgRawZ(argList, cfgOptType, "preserve");
+         hrnCfgArgRawZ(argList, cfgOptSet, "20161219-212741F");
+@@ -2951,11 +2951,11 @@ testRun(void)
+         HRN_STORAGE_PUT_Z(storagePgWrite(), "base/1/2", BOGUS_STR);
+         HRN_STORAGE_MODE(storagePgWrite(), "base/1/2", 0600);
+ 
+-        // Covert pg_wal to a path so it will be removed
++        // Convert pg_wal to a path so it will be removed
+         HRN_STORAGE_REMOVE(storagePgWrite(), "pg_wal");
+         HRN_STORAGE_PATH_CREATE(storagePgWrite(), "pg_wal");
+ 
+-        // Covert pg_hba.conf to a path so it will be removed
++        // Convert pg_hba.conf to a path so it will be removed
+         HRN_STORAGE_REMOVE(storagePgWrite(), "pg_hba.conf");
+         HRN_STORAGE_PUT_Z(storagePgWrite(), "pg_hba.conf", BOGUS_STR);
+ 
+diff --git a/test/src/module/db/dbTest.c b/test/src/module/db/dbTest.c
+index f780fd521..04a4074e9 100644
+--- a/test/src/module/db/dbTest.c
++++ b/test/src/module/db/dbTest.c
+@@ -296,7 +296,7 @@ testRun(void)
+         HRN_PQ_SCRIPT_SET(HRN_PQ_SCRIPT_DATABASE_LIST_1(1, "test1"));
+         TEST_RESULT_STR_Z(hrnPackToStr(dbList(db.primary)), "1:array:[1:u32:16384, 2:str:test1, 3:u32:13777]", "check db list");
+ 
+-        // Get tablespace ist
++        // Get tablespace list
+         HRN_PQ_SCRIPT_SET(HRN_PQ_SCRIPT_TABLESPACE_LIST_0(1));
+         TEST_RESULT_STR_Z(hrnPackToStr(dbTablespaceList(db.primary)), "", "check tablespace list");
+ 
+@@ -840,7 +840,7 @@ testRun(void)
+             HRN_PQ_SCRIPT_CLOSE(8),
+             HRN_PQ_SCRIPT_CLOSE(1));
+ 
+-        TEST_ASSIGN(result, dbGet(false, true, CFGOPTVAL_BACKUP_STANDBY_N), "get primary and standy");
++        TEST_ASSIGN(result, dbGet(false, true, CFGOPTVAL_BACKUP_STANDBY_N), "get primary and standby");
+ 
+         hrnLogReplaceAdd("(could not connect to server|connection to server on socket).*$", NULL, "PG ERROR", false);
+         TEST_RESULT_LOG(
+diff --git a/test/src/module/info/manifestTest.c b/test/src/module/info/manifestTest.c
+index b22984042..101edcae5 100644
+--- a/test/src/module/info/manifestTest.c
++++ b/test/src/module/info/manifestTest.c
+@@ -631,7 +631,7 @@ testRun(void)
+         // Version
+         HRN_STORAGE_PUT_Z(storagePgWrite, PG_FILE_PGVERSION, "12\n", .modeFile = 0600, .timeModified = 1565282100);
+ 
+-        // Tablespace link errors when correct verion not found
++        // Tablespace link errors when correct version not found
+         TEST_ERROR(
+             manifestNewBuild(
+                 storagePg, PG_VERSION_12, hrnPgCatalogVersion(PG_VERSION_12), 0, false, false, false, false, NULL, NULL, NULL),
+diff --git a/test/src/module/performance/storageTest.c b/test/src/module/performance/storageTest.c
+index 9b8cfa671..064a28ffb 100644
+--- a/test/src/module/performance/storageTest.c
++++ b/test/src/module/performance/storageTest.c
+@@ -76,7 +76,7 @@ testIoRateProcess(THIS_VOID, const Buffer *input)
+     THIS(TestIoRate);
+ 
+     // Determine the elapsed time since the filter began processing data. The begin time is not set in the constructor because an
+-    // unknown amount of time can elapse between the filter being created and acually used.
++    // unknown amount of time can elapse between the filter being created and actually used.
+     uint64_t timeElapsed = 0;
+ 
+     if (this->timeBegin == 0)
+diff --git a/test/src/module/storage/sftpTest.c b/test/src/module/storage/sftpTest.c
+index 8d3e159ed..c99670dd9 100644
+--- a/test/src/module/storage/sftpTest.c
++++ b/test/src/module/storage/sftpTest.c
+@@ -786,7 +786,7 @@ testRun(void)
+         memContextFree(objMemContext((StorageSftp *)storageDriver(storageTest)));
+ 
+         // -------------------------------------------------------------------------------------------------------------------------
+-        TEST_TITLE("knownhost_init WARN host key checking disabled, unsecure connections, hostKeyCheckType = no");
++        TEST_TITLE("knownhost_init WARN host key checking disabled, insecure connections, hostKeyCheckType = no");
+ 
+         hrnLibSsh2ScriptSet((HrnLibSsh2 [])
+         {
+-- 
+2.34.1
+

@@ -1,0 +1,423 @@
+From 2e0ef0d658603a2c2da2fe0ec633d3f3fd35229b Mon Sep 17 00:00:00 2001
+From: David Steele <david@pgbackrest.org>
+Date: Wed, 13 Nov 2024 17:28:21 -0500
+Subject: [PATCH 1/9] Move compression driver param list management to a common
+ module.
+
+This code was duplicated in each driver so this means less duplication.
+
+In addition, some drivers were not creating a parameter list for decompression which meant they could not be used remotely. This is not a currently a bug since none of them were being used remotely, but it was a blocker for using lz4 for protocol compression.
+---
+ doc/src/meson.build                  |  1 +
+ src/common/compress/bz2/compress.c   | 17 +--------
+ src/common/compress/bz2/decompress.c |  3 +-
+ src/common/compress/common.c         | 57 ++++++++++++++++++++++++++++
+ src/common/compress/common.h         | 18 +++++++++
+ src/common/compress/gz/compress.c    | 18 +--------
+ src/common/compress/gz/decompress.c  | 17 +--------
+ src/common/compress/lz4/compress.c   | 18 +--------
+ src/common/compress/lz4/decompress.c |  3 +-
+ src/common/compress/zst/compress.c   | 17 +--------
+ src/common/compress/zst/decompress.c |  3 +-
+ src/meson.build                      |  2 +
+ test/define.yaml                     |  1 +
+ test/src/meson.build                 |  1 +
+ 14 files changed, 96 insertions(+), 80 deletions(-)
+ create mode 100644 src/common/compress/common.c
+ create mode 100644 src/common/compress/common.h
+
+diff --git a/doc/src/meson.build b/doc/src/meson.build
+index 756c24a48..f08e9f2dc 100644
+--- a/doc/src/meson.build
++++ b/doc/src/meson.build
+@@ -31,6 +31,7 @@ src_doc = [
+     '../../src/command/exit.c',
+     '../../src/command/help/help.c',
+     '../../src/command/lock.c',
++    '../../src/common/compress/common.c',
+     '../../src/common/compress/bz2/common.c',
+     '../../src/common/compress/bz2/compress.c',
+     '../../src/common/compress/bz2/decompress.c',
+diff --git a/src/common/compress/bz2/compress.c b/src/common/compress/bz2/compress.c
+index ddf1a053b..e10c236e6 100644
+--- a/src/common/compress/bz2/compress.c
++++ b/src/common/compress/bz2/compress.c
+@@ -8,6 +8,7 @@ BZ2 Compress
+ 
+ #include "common/compress/bz2/common.h"
+ #include "common/compress/bz2/compress.h"
++#include "common/compress/common.h"
+ #include "common/debug.h"
+ #include "common/io/filter/filter.h"
+ #include "common/log.h"
+@@ -184,23 +185,9 @@ bz2CompressNew(const int level, const bool raw)
+     }
+     OBJ_NEW_END();
+ 
+-    // Create param list
+-    Pack *paramList;
+-
+-    MEM_CONTEXT_TEMP_BEGIN()
+-    {
+-        PackWrite *const packWrite = pckWriteNewP();
+-
+-        pckWriteI32P(packWrite, level);
+-        pckWriteEndP(packWrite);
+-
+-        paramList = pckMove(pckWriteResult(packWrite), memContextPrior());
+-    }
+-    MEM_CONTEXT_TEMP_END();
+-
+     FUNCTION_LOG_RETURN(
+         IO_FILTER,
+         ioFilterNewP(
+-            BZ2_COMPRESS_FILTER_TYPE, this, paramList, .done = bz2CompressDone, .inOut = bz2CompressProcess,
++            BZ2_COMPRESS_FILTER_TYPE, this, compressParamList(level, raw), .done = bz2CompressDone, .inOut = bz2CompressProcess,
+             .inputSame = bz2CompressInputSame));
+ }
+diff --git a/src/common/compress/bz2/decompress.c b/src/common/compress/bz2/decompress.c
+index 720e5a6e2..8eb07c562 100644
+--- a/src/common/compress/bz2/decompress.c
++++ b/src/common/compress/bz2/decompress.c
+@@ -8,6 +8,7 @@ BZ2 Decompress
+ 
+ #include "common/compress/bz2/common.h"
+ #include "common/compress/bz2/decompress.h"
++#include "common/compress/common.h"
+ #include "common/debug.h"
+ #include "common/io/filter/filter.h"
+ #include "common/log.h"
+@@ -171,6 +172,6 @@ bz2DecompressNew(const bool raw)
+     FUNCTION_LOG_RETURN(
+         IO_FILTER,
+         ioFilterNewP(
+-            BZ2_DECOMPRESS_FILTER_TYPE, this, NULL, .done = bz2DecompressDone, .inOut = bz2DecompressProcess,
++            BZ2_DECOMPRESS_FILTER_TYPE, this, decompressParamList(raw), .done = bz2DecompressDone, .inOut = bz2DecompressProcess,
+             .inputSame = bz2DecompressInputSame));
+ }
+diff --git a/src/common/compress/common.c b/src/common/compress/common.c
+new file mode 100644
+index 000000000..c6b47b810
+--- /dev/null
++++ b/src/common/compress/common.c
+@@ -0,0 +1,57 @@
++/***********************************************************************************************************************************
++Compression Common
++***********************************************************************************************************************************/
++#include "build.auto.h"
++
++#include "common/compress/common.h"
++#include "common/debug.h"
++
++/**********************************************************************************************************************************/
++FN_EXTERN Pack *
++compressParamList(const int level, const bool raw)
++{
++    FUNCTION_TEST_BEGIN();
++        FUNCTION_LOG_PARAM(INT, level);
++        FUNCTION_TEST_PARAM(BOOL, raw);
++    FUNCTION_TEST_END();
++
++    Pack *result;
++
++    MEM_CONTEXT_TEMP_BEGIN()
++    {
++        PackWrite *const packWrite = pckWriteNewP();
++
++        pckWriteI32P(packWrite, level);
++        pckWriteBoolP(packWrite, raw);
++        pckWriteEndP(packWrite);
++
++        result = pckMove(pckWriteResult(packWrite), memContextPrior());
++    }
++    MEM_CONTEXT_TEMP_END();
++
++    FUNCTION_TEST_RETURN(PACK, result);
++}
++
++/**********************************************************************************************************************************/
++FN_EXTERN Pack *
++decompressParamList(const bool raw)
++{
++    FUNCTION_TEST_BEGIN();
++        FUNCTION_TEST_PARAM(BOOL, raw);
++    FUNCTION_TEST_END();
++
++    Pack *result;
++
++    MEM_CONTEXT_TEMP_BEGIN()
++    {
++        PackWrite *const packWrite = pckWriteNewP();
++
++        pckWriteBoolP(packWrite, raw);
++        pckWriteEndP(packWrite);
++
++        result = pckMove(pckWriteResult(packWrite), memContextPrior());
++    }
++    MEM_CONTEXT_TEMP_END();
++
++    FUNCTION_TEST_RETURN(PACK, result);
++}
+diff --git a/src/common/compress/common.h b/src/common/compress/common.h
+new file mode 100644
+index 000000000..6bc44847a
+--- /dev/null
++++ b/src/common/compress/common.h
+@@ -0,0 +1,18 @@
++/***********************************************************************************************************************************
++Compression Common
++***********************************************************************************************************************************/
++#ifndef COMMON_COMPRESS_COMMON_H
++#define COMMON_COMPRESS_COMMON_H
++
++#include "common/type/pack.h"
++
++/***********************************************************************************************************************************
++Functions
++***********************************************************************************************************************************/
++// Build compress param list
++FN_EXTERN Pack *compressParamList(int level, bool raw);
++
++// Build decompress param list
++FN_EXTERN Pack *decompressParamList(bool raw);
++
++#endif
+diff --git a/src/common/compress/gz/compress.c b/src/common/compress/gz/compress.c
+index 90f30e4d1..fdd2647c6 100644
+--- a/src/common/compress/gz/compress.c
++++ b/src/common/compress/gz/compress.c
+@@ -8,6 +8,7 @@ Based on the documentation at https://github.com/madler/zlib/blob/master/zlib.h
+ #include <stdio.h>
+ #include <zlib.h>
+ 
++#include "common/compress/common.h"
+ #include "common/compress/gz/common.h"
+ #include "common/compress/gz/compress.h"
+ #include "common/debug.h"
+@@ -188,24 +189,9 @@ gzCompressNew(const int level, const bool raw)
+     }
+     OBJ_NEW_END();
+ 
+-    // Create param list
+-    Pack *paramList;
+-
+-    MEM_CONTEXT_TEMP_BEGIN()
+-    {
+-        PackWrite *const packWrite = pckWriteNewP();
+-
+-        pckWriteI32P(packWrite, level);
+-        pckWriteBoolP(packWrite, raw);
+-        pckWriteEndP(packWrite);
+-
+-        paramList = pckMove(pckWriteResult(packWrite), memContextPrior());
+-    }
+-    MEM_CONTEXT_TEMP_END();
+-
+     FUNCTION_LOG_RETURN(
+         IO_FILTER,
+         ioFilterNewP(
+-            GZ_COMPRESS_FILTER_TYPE, this, paramList, .done = gzCompressDone, .inOut = gzCompressProcess,
++            GZ_COMPRESS_FILTER_TYPE, this, compressParamList(level, raw), .done = gzCompressDone, .inOut = gzCompressProcess,
+             .inputSame = gzCompressInputSame));
+ }
+diff --git a/src/common/compress/gz/decompress.c b/src/common/compress/gz/decompress.c
+index 136dcded2..85eb28935 100644
+--- a/src/common/compress/gz/decompress.c
++++ b/src/common/compress/gz/decompress.c
+@@ -8,6 +8,7 @@ Based on the documentation at https://github.com/madler/zlib/blob/master/zlib.h
+ #include <stdio.h>
+ #include <zlib.h>
+ 
++#include "common/compress/common.h"
+ #include "common/compress/gz/common.h"
+ #include "common/compress/gz/decompress.h"
+ #include "common/debug.h"
+@@ -167,23 +168,9 @@ gzDecompressNew(const bool raw)
+     }
+     OBJ_NEW_END();
+ 
+-    // Create param list
+-    Pack *paramList;
+-
+-    MEM_CONTEXT_TEMP_BEGIN()
+-    {
+-        PackWrite *const packWrite = pckWriteNewP();
+-
+-        pckWriteBoolP(packWrite, raw);
+-        pckWriteEndP(packWrite);
+-
+-        paramList = pckMove(pckWriteResult(packWrite), memContextPrior());
+-    }
+-    MEM_CONTEXT_TEMP_END();
+-
+     FUNCTION_LOG_RETURN(
+         IO_FILTER,
+         ioFilterNewP(
+-            GZ_DECOMPRESS_FILTER_TYPE, this, paramList, .done = gzDecompressDone, .inOut = gzDecompressProcess,
++            GZ_DECOMPRESS_FILTER_TYPE, this, decompressParamList(raw), .done = gzDecompressDone, .inOut = gzDecompressProcess,
+             .inputSame = gzDecompressInputSame));
+ }
+diff --git a/src/common/compress/lz4/compress.c b/src/common/compress/lz4/compress.c
+index 4ab6fb2c0..bfd864fd4 100644
+--- a/src/common/compress/lz4/compress.c
++++ b/src/common/compress/lz4/compress.c
+@@ -9,6 +9,7 @@ Developed against version r131 using the documentation in https://github.com/lz4
+ #include <stdio.h>
+ #include <string.h>
+ 
++#include "common/compress/common.h"
+ #include "common/compress/lz4/common.h"
+ #include "common/compress/lz4/compress.h"
+ #include "common/debug.h"
+@@ -271,24 +272,9 @@ lz4CompressNew(const int level, const bool raw)
+     }
+     OBJ_NEW_END();
+ 
+-    // Create param list
+-    Pack *paramList;
+-
+-    MEM_CONTEXT_TEMP_BEGIN()
+-    {
+-        PackWrite *const packWrite = pckWriteNewP();
+-
+-        pckWriteI32P(packWrite, level);
+-        pckWriteBoolP(packWrite, raw);
+-        pckWriteEndP(packWrite);
+-
+-        paramList = pckMove(pckWriteResult(packWrite), memContextPrior());
+-    }
+-    MEM_CONTEXT_TEMP_END();
+-
+     FUNCTION_LOG_RETURN(
+         IO_FILTER,
+         ioFilterNewP(
+-            LZ4_COMPRESS_FILTER_TYPE, this, paramList, .done = lz4CompressDone, .inOut = lz4CompressProcess,
++            LZ4_COMPRESS_FILTER_TYPE, this, compressParamList(level, raw), .done = lz4CompressDone, .inOut = lz4CompressProcess,
+             .inputSame = lz4CompressInputSame));
+ }
+diff --git a/src/common/compress/lz4/decompress.c b/src/common/compress/lz4/decompress.c
+index f596351e3..83fce0fcf 100644
+--- a/src/common/compress/lz4/decompress.c
++++ b/src/common/compress/lz4/decompress.c
+@@ -6,6 +6,7 @@ LZ4 Decompress
+ #include <lz4frame.h>
+ #include <stdio.h>
+ 
++#include "common/compress/common.h"
+ #include "common/compress/lz4/common.h"
+ #include "common/compress/lz4/decompress.h"
+ #include "common/debug.h"
+@@ -176,6 +177,6 @@ lz4DecompressNew(const bool raw)
+     FUNCTION_LOG_RETURN(
+         IO_FILTER,
+         ioFilterNewP(
+-            LZ4_DECOMPRESS_FILTER_TYPE, this, NULL, .done = lz4DecompressDone, .inOut = lz4DecompressProcess,
++            LZ4_DECOMPRESS_FILTER_TYPE, this, decompressParamList(raw), .done = lz4DecompressDone, .inOut = lz4DecompressProcess,
+             .inputSame = lz4DecompressInputSame));
+ }
+diff --git a/src/common/compress/zst/compress.c b/src/common/compress/zst/compress.c
+index ea4351d13..df04d42de 100644
+--- a/src/common/compress/zst/compress.c
++++ b/src/common/compress/zst/compress.c
+@@ -7,6 +7,7 @@ ZST Compress
+ 
+ #include <zstd.h>
+ 
++#include "common/compress/common.h"
+ #include "common/compress/zst/common.h"
+ #include "common/compress/zst/compress.h"
+ #include "common/debug.h"
+@@ -189,24 +190,10 @@ zstCompressNew(const int level, const bool raw)
+     }
+     OBJ_NEW_END();
+ 
+-    // Create param list
+-    Pack *paramList;
+-
+-    MEM_CONTEXT_TEMP_BEGIN()
+-    {
+-        PackWrite *const packWrite = pckWriteNewP();
+-
+-        pckWriteI32P(packWrite, level);
+-        pckWriteEndP(packWrite);
+-
+-        paramList = pckMove(pckWriteResult(packWrite), memContextPrior());
+-    }
+-    MEM_CONTEXT_TEMP_END();
+-
+     FUNCTION_LOG_RETURN(
+         IO_FILTER,
+         ioFilterNewP(
+-            ZST_COMPRESS_FILTER_TYPE, this, paramList, .done = zstCompressDone, .inOut = zstCompressProcess,
++            ZST_COMPRESS_FILTER_TYPE, this, compressParamList(level, raw), .done = zstCompressDone, .inOut = zstCompressProcess,
+             .inputSame = zstCompressInputSame));
+ }
+ 
+diff --git a/src/common/compress/zst/decompress.c b/src/common/compress/zst/decompress.c
+index 9d2418de7..60dd57380 100644
+--- a/src/common/compress/zst/decompress.c
++++ b/src/common/compress/zst/decompress.c
+@@ -7,6 +7,7 @@ ZST Decompress
+ 
+ #include <zstd.h>
+ 
++#include "common/compress/common.h"
+ #include "common/compress/zst/common.h"
+ #include "common/compress/zst/decompress.h"
+ #include "common/debug.h"
+@@ -180,7 +181,7 @@ zstDecompressNew(const bool raw)
+     FUNCTION_LOG_RETURN(
+         IO_FILTER,
+         ioFilterNewP(
+-            ZST_DECOMPRESS_FILTER_TYPE, this, NULL, .done = zstDecompressDone, .inOut = zstDecompressProcess,
++            ZST_DECOMPRESS_FILTER_TYPE, this, decompressParamList(raw), .done = zstDecompressDone, .inOut = zstDecompressProcess,
+             .inputSame = zstDecompressInputSame));
+ }
+ 
+diff --git a/src/meson.build b/src/meson.build
+index b846fdd50..6dbf55fe5 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -89,6 +89,7 @@ src_build_code = [
+     'build/postgres/parse.c',
+     'build/postgres/render.c',
+     'build/main.c',
++    'common/compress/common.c',
+     'common/compress/bz2/common.c',
+     'common/compress/bz2/compress.c',
+ ]
+@@ -168,6 +169,7 @@ src_pgbackrest = [
+     'command/verify/file.c',
+     'command/verify/protocol.c',
+     'command/verify/verify.c',
++    'common/compress/common.c',
+     'common/compress/helper.c',
+     'common/compress/bz2/common.c',
+     'common/compress/bz2/compress.c',
+diff --git a/test/define.yaml b/test/define.yaml
+index 19d929a1b..ecc25cb9b 100644
+--- a/test/define.yaml
++++ b/test/define.yaml
+@@ -342,6 +342,7 @@ unit:
+           - common/compress/zst/common
+           - common/compress/zst/compress
+           - common/compress/zst/decompress
++          - common/compress/common
+           - common/compress/helper
+ 
+         depend:
+diff --git a/test/src/meson.build b/test/src/meson.build
+index 83be9e68d..ff1d5399b 100644
+--- a/test/src/meson.build
++++ b/test/src/meson.build
+@@ -28,6 +28,7 @@ src_test = [
+     '../../src/command/exit.c',
+     '../../src/command/help/help.c',
+     '../../src/command/lock.c',
++    '../../src/common/compress/common.c',
+     '../../src/common/compress/bz2/common.c',
+     '../../src/common/compress/bz2/decompress.c',
+     '../../src/common/fork.c',
+-- 
+2.34.1
+

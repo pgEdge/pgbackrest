@@ -1,0 +1,2013 @@
+From c2758a9d686f123a2a6b9658b27565ba13b27b9a Mon Sep 17 00:00:00 2001
+From: David Steele <david@pgmasters.net>
+Date: Tue, 26 Nov 2024 11:23:43 -0500
+Subject: [PATCH 9/9] Full/incremental backup method.
+
+This backup method does a preliminary copy of all files that were last modified prior to a defined interval before calling pg_backup_start(). Then the backup is started as usual and the remainder of the files are copied. The advantage is that generally a smaller set of WAL will be required to make the backup consistent, provided there are some files that have not been recently modified.
+
+The length of the prior full backup is used to determine the interval used for the preliminary copy since any files modified within this interval will likely be modified again during the backup. If no prior full backup exists then the interval is set to one day.
+
+This feature is being committed as internal-only for the time being.
+---
+ doc/xml/release/2025/2.55.0.xml               |  14 +
+ src/build/config/config.yaml                  |  15 +
+ src/build/help/help.xml                       |  12 +
+ src/command/backup/backup.c                   | 341 ++++++++++++++----
+ src/command/backup/file.c                     |  38 +-
+ src/common/time.h                             |   1 +
+ src/config/config.auto.h                      |   4 +-
+ src/config/parse.auto.c.inc                   |  47 +++
+ src/db/db.c                                   |   2 +-
+ src/info/manifest.c                           | 141 ++++++--
+ src/info/manifest.h                           |   7 +
+ src/postgres/interface.h                      |   1 +
+ src/postgres/interface/version.intern.h       |   1 +
+ test/src/common/harnessBackup.c               | 141 ++++++--
+ test/src/common/harnessBackup.h               |   4 +
+ test/src/common/harnessHost.c                 |  20 +-
+ test/src/common/harnessHost.h                 |   4 +
+ test/src/common/harnessLog.c                  |  26 ++
+ test/src/common/harnessLog.h                  |   3 +
+ .../harnessPostgres/harnessVersion.intern.h   |   1 +
+ test/src/common/harnessPq.h                   |   2 +-
+ test/src/module/command/backupTest.c          | 170 +++++++--
+ test/src/module/command/manifestTest.c        |   6 +-
+ test/src/module/info/manifestTest.c           |  13 +
+ test/src/module/integration/allTest.c         |  39 +-
+ test/src/module/postgres/interfaceTest.c      |   5 +-
+ 26 files changed, 842 insertions(+), 216 deletions(-)
+
+diff --git a/doc/xml/release/2025/2.55.0.xml b/doc/xml/release/2025/2.55.0.xml
+index d3778a850..96d2f28d9 100644
+--- a/doc/xml/release/2025/2.55.0.xml
++++ b/doc/xml/release/2025/2.55.0.xml
+@@ -50,6 +50,20 @@
+                 <p>Remove <proper>autoconf</proper>/<proper>make</proper> build.</p>
+             </release-item>
+         </release-improvement-list>
++
++        <release-development-list>
++            <release-item>
++                <github-pull-request id="2306"/>
++
++                <release-item-contributor-list>
++                    <release-item-contributor id="david.steele"/>
++                    <release-item-reviewer id="david.christensen"/>
++                    <release-item-reviewer id="stefan.fercot"/>
++                </release-item-contributor-list>
++
++                <p>Full/incremental backup method.</p>
++            </release-item>
++        </release-development-list>
+     </release-core-list>
+ 
+     <release-test-list>
+diff --git a/src/build/config/config.yaml b/src/build/config/config.yaml
+index 2196168e9..f39d4a4bc 100644
+--- a/src/build/config/config.yaml
++++ b/src/build/config/config.yaml
+@@ -1228,6 +1228,21 @@ option:
+       list:
+         - true
+ 
++  backup-full-incr:
++    section: global
++    type: boolean
++    default: false
++    internal: true
++    command:
++      backup:
++        depend:
++          option: online
++          default: false
++          list:
++            - true
++    command-role:
++      main: {}
++
+   backup-standby:
+     section: global
+     type: string-id
+diff --git a/src/build/help/help.xml b/src/build/help/help.xml
+index d6e86f447..e8d274b6d 100644
+--- a/src/build/help/help.xml
++++ b/src/build/help/help.xml
+@@ -1388,6 +1388,18 @@
+                         <example>n</example>
+                     </config-key>
+ 
++                    <config-key id="backup-full-incr" name="Backup using Full/Incr Hybrid">
++                        <summary>Backup using full/incr hybrid.</summary>
++
++                        <text>
++                            <p>This backup method does a preliminary copy of all files that were last modified prior to a defined interval before calling <code>pg_backup_start()</code>. Then the backup is started as usual and the remainder of the files are copied. The advantage is that generally a smaller set of WAL will be required to make the backup consistent, provided there are some files that have not been recently modified.</p>
++
++                            <p>The length of the prior full backup is used to determine the interval used for the preliminary copy since any files modified within this interval will likely be modified again during the backup. If no prior full backup exists then the interval is set to one day.</p>
++                        </text>
++
++                        <example>y</example>
++                    </config-key>
++
+                     <config-key id="backup-standby" name="Backup from Standby">
+                         <summary>Backup from the standby cluster.</summary>
+ 
+diff --git a/src/command/backup/backup.c b/src/command/backup/backup.c
+index 261a73eb5..123899c45 100644
+--- a/src/command/backup/backup.c
++++ b/src/command/backup/backup.c
+@@ -164,6 +164,8 @@ typedef struct BackupData
+     const String *archiveId;                                        // Archive where backup WAL will be stored
+ 
+     unsigned int timeline;                                          // Primary timeline
++    uint64_t checkpoint;                                            // Last checkpoint LSN
++    time_t checkpointTime;                                          // Last checkpoint time
+     unsigned int version;                                           // PostgreSQL version
+     unsigned int walSegmentSize;                                    // PostgreSQL wal segment size
+     PgPageSize pageSize;                                            // PostgreSQL page size
+@@ -231,6 +233,8 @@ backupInit(const InfoBackup *const infoBackup)
+     result->hostPrimary = cfgOptionIdxStrNull(cfgOptPgHost, result->pgIdxPrimary);
+ 
+     result->timeline = pgControl.timeline;
++    result->checkpoint = pgControl.checkpoint;
++    result->checkpointTime = pgControl.checkpointTime;
+     result->version = pgControl.version;
+     result->walSegmentSize = pgControl.walSegmentSize;
+     result->pageSize = pgControl.pageSize;
+@@ -678,8 +682,9 @@ backupBuildIncr(
+ 
+     bool result = false;
+ 
+-    // No incremental if no prior manifest
+-    if (manifestPrior != NULL)
++    // Build the incremental if there is a prior manifest -- except when backup type is full, which indicates a full/incr backup
++    // and is handled elsewhere
++    if (manifestPrior != NULL && cfgOptionStrId(cfgOptType) != backupTypeFull)
+     {
+         MEM_CONTEXT_TEMP_BEGIN()
+         {
+@@ -701,14 +706,74 @@ backupBuildIncr(
+     FUNCTION_LOG_RETURN(BOOL, result);
+ }
+ 
++/***********************************************************************************************************************************
++Get size of files to be copied in a manifest
++***********************************************************************************************************************************/
++static uint64_t
++backupManifestCopySize(Manifest *const manifest)
++{
++    FUNCTION_LOG_BEGIN(logLevelDebug);
++        FUNCTION_LOG_PARAM(MANIFEST, manifest);
++    FUNCTION_LOG_END();
++
++    ASSERT(manifest != NULL);
++
++    uint64_t result = 0;
++
++    for (unsigned int fileIdx = 0; fileIdx < manifestFileTotal(manifest); fileIdx++)
++    {
++        const ManifestFile file = manifestFile(manifest, fileIdx);
++
++        if (file.copy)
++            result += file.size;
++    }
++
++    FUNCTION_LOG_RETURN(UINT64, result);
++}
++
++/***********************************************************************************************************************************
++Get the last full backup time in order to set the limit for full/incr preliminary copy
++***********************************************************************************************************************************/
++static time_t
++backupFullIncrLimit(InfoBackup *const infoBackup)
++{
++    FUNCTION_LOG_BEGIN(logLevelDebug);
++        FUNCTION_LOG_PARAM(INFO_BACKUP, infoBackup);
++    FUNCTION_LOG_END();
++
++    ASSERT(infoBackup != NULL);
++
++    // Default to one day if no full backup can be found
++    time_t result = SEC_PER_DAY;
++
++    // Get the limit from the last full backup if it exists
++    for (unsigned int backupIdx = infoBackupDataTotal(infoBackup) - 1; backupIdx + 1 > 0; backupIdx--)
++    {
++        InfoBackupData backupData = infoBackupData(infoBackup, backupIdx);
++
++        if (backupData.backupType == backupTypeFull)
++        {
++            result = backupData.backupTimestampStop - backupData.backupTimestampStart;
++            break;
++        }
++    }
++
++    // Round up to the nearest minute (ensures we do not have a zero limit). This is a bit imprecise since an interval exactly
++    // divisible by a minute will be rounded up another minute, but it seems fine for this purpose.
++    result = (result / SEC_PER_MIN + 1) * SEC_PER_MIN;
++
++    FUNCTION_LOG_RETURN(TIME, result);
++}
++
+ /***********************************************************************************************************************************
+ Check for a backup that can be resumed and merge into the manifest if found
+ ***********************************************************************************************************************************/
+-// Helper to clean invalid paths/files/links out of the resumable backup path
++// Recursive helper for backupResumeClean()
+ static void
+-backupResumeClean(
++backupResumeCleanRecurse(
+     StorageIterator *const storageItr, Manifest *const manifest, const Manifest *const manifestResume,
+-    const CompressType compressType, const bool delta, const String *const backupParentPath, const String *const manifestParentName)
++    const CompressType compressType, const bool delta, const bool resume, const String *const backupParentPath,
++    const String *const manifestParentName)
+ {
+     FUNCTION_LOG_BEGIN(logLevelDebug);
+         FUNCTION_LOG_PARAM(STORAGE_ITERATOR, storageItr);           // Storage info
+@@ -716,6 +781,7 @@ backupResumeClean(
+         FUNCTION_LOG_PARAM(MANIFEST, manifestResume);               // Resumed manifest
+         FUNCTION_LOG_PARAM(ENUM, compressType);                     // Backup compression type
+         FUNCTION_LOG_PARAM(BOOL, delta);                            // Is this a delta backup?
++        FUNCTION_LOG_PARAM(BOOL, resume);                           // Should resume checking be done (not needed for full)?
+         FUNCTION_LOG_PARAM(STRING, backupParentPath);               // Path to the current level of the backup being cleaned
+         FUNCTION_LOG_PARAM(STRING, manifestParentName);             // Parent manifest name used to construct manifest name
+     FUNCTION_LOG_END();
+@@ -743,6 +809,9 @@ backupResumeClean(
+             // Build the backup path used to remove files/links/paths that are invalid
+             const String *const backupPath = strNewFmt("%s/%s", strZ(backupParentPath), strZ(info.name));
+ 
++            // Add/resume resumed based on resume flag
++            const char *resumeZ = resume ? " resumed" : "";
++
+             // Process file types
+             switch (info.type)
+             {
+@@ -753,15 +822,15 @@ backupResumeClean(
+                     // If the path was not found in the new manifest then remove it
+                     if (manifestPathFindDefault(manifest, manifestName, NULL) == NULL)
+                     {
+-                        LOG_DETAIL_FMT("remove path '%s' from resumed backup", strZ(storagePathP(storageRepo(), backupPath)));
++                        LOG_DETAIL_FMT("remove path '%s' from%s backup", strZ(storagePathP(storageRepo(), backupPath)), resumeZ);
+                         storagePathRemoveP(storageRepoWrite(), backupPath, .recurse = true);
+                     }
+                     // Else recurse into the path
+                     else
+                     {
+-                        backupResumeClean(
++                        backupResumeCleanRecurse(
+                             storageNewItrP(storageRepo(), backupPath, .sortOrder = sortOrderAsc), manifest, manifestResume,
+-                            compressType, delta, backupPath, manifestName);
++                            compressType, delta, resume, backupPath, manifestName);
+                     }
+ 
+                     break;
+@@ -796,14 +865,14 @@ backupResumeClean(
+                         ASSERT(file.reference == NULL);
+ 
+                         if (!manifestFileExists(manifestResume, manifestName))
+-                            removeReason = "missing in resumed manifest";
++                            removeReason = zNewFmt("missing in%s manifest", resumeZ);
+                         else
+                         {
+                             const ManifestFile fileResume = manifestFileFind(manifestResume, manifestName);
+                             ASSERT(fileResume.reference == NULL);
+ 
+                             if (fileResume.checksumSha1 == NULL)
+-                                removeReason = "no checksum in resumed manifest";
++                                removeReason = zNewFmt("no checksum in%s manifest", resumeZ);
+                             else if (file.size != fileResume.size)
+                                 removeReason = "mismatched size";
+                             else if (!delta && file.timestamp != fileResume.timestamp)
+@@ -826,8 +895,10 @@ backupResumeClean(
+                                 file.checksumPage = fileResume.checksumPage;
+                                 file.checksumPageError = fileResume.checksumPageError;
+                                 file.checksumPageErrorList = fileResume.checksumPageErrorList;
+-                                file.resume = true;
++
++                                file.resume = resume;
+                                 file.delta = delta;
++                                file.copy = resume | delta;
+ 
+                                 manifestFileUpdate(manifest, &file);
+                             }
+@@ -838,7 +909,7 @@ backupResumeClean(
+                     if (removeReason != NULL)
+                     {
+                         LOG_DETAIL_FMT(
+-                            "remove file '%s' from resumed backup (%s)", strZ(storagePathP(storageRepo(), backupPath)),
++                            "remove file '%s' from%s backup (%s)", strZ(storagePathP(storageRepo(), backupPath)), resumeZ,
+                             removeReason);
+                         storageRemoveP(storageRepoWrite(), backupPath);
+                     }
+@@ -856,7 +927,7 @@ backupResumeClean(
+                 // Remove special files
+                 // -----------------------------------------------------------------------------------------------------------------
+                 case storageTypeSpecial:
+-                    LOG_WARN_FMT("remove special file '%s' from resumed backup", strZ(storagePathP(storageRepo(), backupPath)));
++                    LOG_WARN_FMT("remove special file '%s' from%s backup", strZ(storagePathP(storageRepo(), backupPath)), resumeZ);
+                     storageRemoveP(storageRepoWrite(), backupPath);
+                     break;
+             }
+@@ -870,6 +941,41 @@ backupResumeClean(
+     FUNCTION_LOG_RETURN_VOID();
+ }
+ 
++// Helper to clean invalid paths/files/links out of the resumable backup path
++static void
++backupResumeClean(Manifest *const manifest, const Manifest *const manifestResume, const bool resume, const bool delta)
++{
++    FUNCTION_LOG_BEGIN(logLevelDebug);
++        FUNCTION_LOG_PARAM(MANIFEST, manifest);
++        FUNCTION_LOG_PARAM(MANIFEST, manifestResume);
++        FUNCTION_LOG_PARAM(BOOL, resume);
++        FUNCTION_LOG_PARAM(BOOL, delta);
++    FUNCTION_LOG_END();
++
++    ASSERT(manifest != NULL);
++    ASSERT(manifestResume != NULL);
++    ASSERT(manifestData(manifest)->backupType == backupTypeFull);
++
++    MEM_CONTEXT_TEMP_BEGIN()
++    {
++        // Set the backup label to the resumed backup
++        manifestBackupLabelSet(manifest, manifestData(manifestResume)->backupLabel);
++
++        // Copy cipher subpass since it was used to encrypt the resumable files
++        manifestCipherSubPassSet(manifest, manifestCipherSubPass(manifestResume));
++
++        // Clean resumed backup
++        const String *const backupPath = strNewFmt(STORAGE_REPO_BACKUP "/%s", strZ(manifestData(manifest)->backupLabel));
++
++        backupResumeCleanRecurse(
++            storageNewItrP(storageRepo(), backupPath, .sortOrder = sortOrderAsc), manifest, manifestResume,
++            compressTypeEnum(cfgOptionStrId(cfgOptCompressType)), delta, resume, backupPath, NULL);
++    }
++    MEM_CONTEXT_TEMP_END();
++
++    FUNCTION_LOG_RETURN_VOID();
++}
++
+ // Helper to find a resumable backup
+ static const Manifest *
+ backupResumeFind(const Manifest *const manifest, const String *const cipherPassBackup)
+@@ -1021,22 +1127,20 @@ backupResume(Manifest *const manifest, const String *const cipherPassBackup)
+             // Resuming
+             result = true;
+ 
+-            // Set the backup label to the resumed backup
+-            manifestBackupLabelSet(manifest, manifestData(manifestResume)->backupLabel);
+-
+             LOG_WARN_FMT(
+                 "resumable backup %s of same type exists -- invalid files will be removed then the backup will resume",
+-                strZ(manifestData(manifest)->backupLabel));
++                strZ(manifestData(manifestResume)->backupLabel));
+ 
+-            // Copy cipher subpass since it was used to encrypt the resumable files
+-            manifestCipherSubPassSet(manifest, manifestCipherSubPass(manifestResume));
+-
+-            // Clean resumed backup
+-            const String *const backupPath = strNewFmt(STORAGE_REPO_BACKUP "/%s", strZ(manifestData(manifest)->backupLabel));
+-
+-            backupResumeClean(
+-                storageNewItrP(storageRepo(), backupPath, .sortOrder = sortOrderAsc), manifest, manifestResume,
+-                compressTypeEnum(cfgOptionStrId(cfgOptCompressType)), cfgOptionBool(cfgOptDelta), backupPath, NULL);
++            backupResumeClean(manifest, manifestResume, true, cfgOptionBool(cfgOptDelta));
++        }
++        // Else generate a new label for the backup
++        else
++        {
++            manifestBackupLabelSet(
++                manifest,
++                backupLabelCreate(
++                    manifestData(manifest)->backupType, manifestData(manifest)->backupLabelPrior,
++                    manifestData(manifest)->backupTimestampStart));
+         }
+     }
+     MEM_CONTEXT_TEMP_END();
+@@ -1774,12 +1878,14 @@ backupProcessQueueComparator(const void *const item1, const void *const item2)
+ 
+ // Helper to generate the backup queues
+ static uint64_t
+-backupProcessQueue(const BackupData *const backupData, Manifest *const manifest, BackupJobData *const jobData)
++backupProcessQueue(
++    const BackupData *const backupData, Manifest *const manifest, BackupJobData *const jobData, const bool preliminary)
+ {
+     FUNCTION_LOG_BEGIN(logLevelDebug);
+         FUNCTION_LOG_PARAM(BACKUP_DATA, backupData);
+         FUNCTION_LOG_PARAM(MANIFEST, manifest);
+         FUNCTION_LOG_PARAM_P(VOID, jobData);
++        FUNCTION_LOG_PARAM(BOOL, preliminary);
+     FUNCTION_LOG_END();
+ 
+     FUNCTION_AUDIT_HELPER();
+@@ -1878,7 +1984,7 @@ backupProcessQueue(const BackupData *const backupData, Manifest *const manifest,
+         }
+ 
+         // pg_control should always be in an online backup
+-        if (!pgControlFound && cfgOptionBool(cfgOptOnline))
++        if (!preliminary && !pgControlFound && cfgOptionBool(cfgOptOnline))
+         {
+             THROW(
+                 FileMissingError,
+@@ -2034,7 +2140,7 @@ backupJobCallback(void *const data, const unsigned int clientIdx)
+                     pckWriteU64P(param, file.blockIncrChecksumSize);
+                     pckWriteU64P(param, jobData->blockIncrSizeSuper);
+ 
+-                    if (file.blockIncrMapSize != 0 && !file.resume)
++                    if (file.blockIncrMapSize != 0 && file.reference != NULL)
+                     {
+                         pckWriteStrP(
+                             param,
+@@ -2094,15 +2200,20 @@ backupJobCallback(void *const data, const unsigned int clientIdx)
+ }
+ 
+ static void
+-backupProcess(const BackupData *const backupData, Manifest *const manifest, const String *const cipherPassBackup)
++backupProcess(
++    const BackupData *const backupData, Manifest *const manifest, const bool preliminary, const String *const cipherPassBackup,
++    const uint64_t copySizePrelim, const uint64_t copySizeFinal)
+ {
+     FUNCTION_LOG_BEGIN(logLevelDebug);
+         FUNCTION_LOG_PARAM(BACKUP_DATA, backupData);
+         FUNCTION_LOG_PARAM(MANIFEST, manifest);
++        FUNCTION_LOG_PARAM(BOOL, preliminary);
+         FUNCTION_TEST_PARAM(STRING, cipherPassBackup);
+     FUNCTION_LOG_END();
+ 
++    ASSERT(backupData != NULL);
+     ASSERT(manifest != NULL);
++    ASSERT(copySizePrelim == 0 || copySizeFinal == 0);
+ 
+     uint64_t sizeTotal = 0;
+ 
+@@ -2155,7 +2266,7 @@ backupProcess(const BackupData *const backupData, Manifest *const manifest, cons
+         // If this is a full backup or hard-linked and paths are supported then create all paths explicitly so that empty paths will
+         // exist in the repo. Also create tablespace symlinks when symlinks are available. This makes it possible for the user to
+         // make a copy of the backup path and get a valid cluster.
+-        if ((backupType == backupTypeFull && !jobData.bundle) || hardLink)
++        if (!preliminary && ((backupType == backupTypeFull && !jobData.bundle) || hardLink))
+         {
+             // Create paths when available
+             if (storageFeature(storageRepoWrite(), storageFeaturePath))
+@@ -2190,7 +2301,7 @@ backupProcess(const BackupData *const backupData, Manifest *const manifest, cons
+         }
+ 
+         // Generate processing queues
+-        sizeTotal = backupProcessQueue(backupData, manifest, &jobData);
++        sizeTotal = backupProcessQueue(backupData, manifest, &jobData, preliminary) + copySizePrelim + copySizeFinal;
+ 
+         // Create the parallel executor
+         ProtocolParallel *const parallelExec = protocolParallelNew(
+@@ -2218,7 +2329,7 @@ backupProcess(const BackupData *const backupData, Manifest *const manifest, cons
+             manifestSaveSize = cfgOptionUInt64(cfgOptManifestSaveThreshold);
+ 
+         // Process jobs
+-        uint64_t sizeProgress = 0;
++        uint64_t sizeProgress = copySizePrelim;
+ 
+         // Initialize percent complete and bytes completed/total
+         unsigned int currentPercentComplete = 0;
+@@ -2275,47 +2386,50 @@ backupProcess(const BackupData *const backupData, Manifest *const manifest, cons
+             manifestFileRemove(manifest, strLstGet(fileRemove, fileRemoveIdx));
+ 
+         // Log references or create hardlinks for all files
+-        const char *const compressExt = strZ(compressExtStr(jobData.compressType));
+-
+-        for (unsigned int fileIdx = 0; fileIdx < manifestFileTotal(manifest); fileIdx++)
++        if (!preliminary)
+         {
+-            const ManifestFile file = manifestFile(manifest, fileIdx);
++            const char *const compressExt = strZ(compressExtStr(jobData.compressType));
+ 
+-            // If the file has a reference, then it was not copied since it can be retrieved from the referenced backup. However,
+-            // if hardlinking is enabled the link will need to be created.
+-            if (file.reference != NULL)
++            for (unsigned int fileIdx = 0; fileIdx < manifestFileTotal(manifest); fileIdx++)
+             {
+-                // If hardlinking is enabled then create a hardlink for files that have not changed since the last backup
+-                if (hardLink)
++                const ManifestFile file = manifestFile(manifest, fileIdx);
++
++                // If the file has a reference, then it was not copied since it can be retrieved from the referenced backup.
++                // However, if hardlinking is enabled the link will need to be created.
++                if (file.reference != NULL)
+                 {
+-                    LOG_DETAIL_FMT("hardlink %s to %s", strZ(file.name), strZ(file.reference));
++                    // If hardlinking is enabled then create a hardlink for files that have not changed since the last backup
++                    if (hardLink)
++                    {
++                        LOG_DETAIL_FMT("hardlink %s to %s", strZ(file.name), strZ(file.reference));
+ 
+-                    const String *const linkName = storagePathP(
+-                        storageRepo(), strNewFmt("%s/%s%s", strZ(backupPathExp), strZ(file.name), compressExt));
+-                    const String *const linkDestination = storagePathP(
+-                        storageRepo(),
+-                        strNewFmt(STORAGE_REPO_BACKUP "/%s/%s%s", strZ(file.reference), strZ(file.name), compressExt));
++                        const String *const linkName = storagePathP(
++                            storageRepo(), strNewFmt("%s/%s%s", strZ(backupPathExp), strZ(file.name), compressExt));
++                        const String *const linkDestination = storagePathP(
++                            storageRepo(),
++                            strNewFmt(STORAGE_REPO_BACKUP "/%s/%s%s", strZ(file.reference), strZ(file.name), compressExt));
+ 
+-                    storageLinkCreateP(storageRepoWrite(), linkDestination, linkName, .linkType = storageLinkHard);
++                        storageLinkCreateP(storageRepoWrite(), linkDestination, linkName, .linkType = storageLinkHard);
++                    }
++                    // Else log the reference. With delta, it is possible that references may have been removed if a file needed to
++                    // be recopied.
++                    else
++                        LOG_DETAIL_FMT("reference %s to %s", strZ(file.name), strZ(file.reference));
+                 }
+-                // Else log the reference. With delta, it is possible that references may have been removed if a file needed to be
+-                // recopied.
+-                else
+-                    LOG_DETAIL_FMT("reference %s to %s", strZ(file.name), strZ(file.reference));
+             }
+-        }
+ 
+-        // Sync backup paths if required
+-        if (storageFeature(storageRepoWrite(), storageFeaturePathSync))
+-        {
+-            for (unsigned int pathIdx = 0; pathIdx < manifestPathTotal(manifest); pathIdx++)
++            // Sync backup paths if required
++            if (storageFeature(storageRepoWrite(), storageFeaturePathSync))
+             {
+-                const String *const path = strNewFmt("%s/%s", strZ(backupPathExp), strZ(manifestPath(manifest, pathIdx)->name));
++                for (unsigned int pathIdx = 0; pathIdx < manifestPathTotal(manifest); pathIdx++)
++                {
++                    const String *const path = strNewFmt("%s/%s", strZ(backupPathExp), strZ(manifestPath(manifest, pathIdx)->name));
+ 
+-                // Always sync the path if it exists or if the backup is full (without bundling) or hardlinked. In the latter cases
+-                // the directory should always exist so we want to error if it does not.
+-                if ((backupType == backupTypeFull && !jobData.bundle) || hardLink || storagePathExistsP(storageRepo(), path))
+-                    storagePathSyncP(storageRepoWrite(), path);
++                    // Always sync the path if it exists or if the backup is full (without bundling) or hardlinked. In the latter
++                    // cases the directory should always exist so we want to error if it does not.
++                    if ((backupType == backupTypeFull && !jobData.bundle) || hardLink || storagePathExistsP(storageRepo(), path))
++                        storagePathSyncP(storageRepoWrite(), path);
++                }
+             }
+         }
+     }
+@@ -2561,6 +2675,9 @@ cmdBackup(void)
+                 cfgOptionGroupName(cfgOptGrpRepo, cfgOptionGroupIdxDefault(cfgOptGrpRepo)));
+         }
+ 
++        // Build block incremental maps using defaults and/or user-specified options
++        const ManifestBlockIncrMap blockIncrMap = backupBlockIncrMap();
++
+         // Load backup.info
+         InfoBackup *const infoBackup = infoBackupLoadFileReconstruct(
+             storageRepo(), INFO_BACKUP_PATH_FILE_STR, cfgOptionStrId(cfgOptRepoCipherType), cfgOptionStrNull(cfgOptRepoCipherPass));
+@@ -2574,14 +2691,89 @@ cmdBackup(void)
+         const time_t timestampStart = backupTime(backupData, false);
+ 
+         // Check if there is a prior manifest when backup type is diff/incr
+-        Manifest *const manifestPrior = backupBuildIncrPrior(infoBackup);
++        Manifest *manifestPrior = backupBuildIncrPrior(infoBackup);
++
++        // Perform preliminary copy of full/incr backup
++        uint64_t copySizePrelim = 0;
++
++        if (cfgOptionStrId(cfgOptType) == backupTypeFull && cfgOptionBool(cfgOptBackupFullIncr))
++        {
++            ASSERT(manifestPrior == NULL);
++
++            MEM_CONTEXT_TEMP_BEGIN()
++            {
++                // Build the manifest
++                Manifest *const manifestPrelim = manifestNewBuild(
++                    backupData->storagePrimary, infoPg.version, infoPg.catalogVersion, timestampStart,
++                    cfgOptionBool(cfgOptOnline), cfgOptionBool(cfgOptChecksumPage), cfgOptionBool(cfgOptRepoBundle),
++                    cfgOptionBool(cfgOptRepoBlock), &blockIncrMap, strLstNewVarLst(cfgOptionLst(cfgOptExclude)),
++                    dbTablespaceList(backupData->dbPrimary));
++
++                // Calculate the expected size of the final copy
++                uint64_t copySizeFinal = backupManifestCopySize(manifestPrelim);
++
++                // Remove files that do not need to be considered for the preliminary copy because they were modified after the
++                // calculated limit time and are therefore likely to be modified during the backup
++                time_t timestampCopyStart = backupData->checkpointTime - backupFullIncrLimit(infoBackup);
++
++                manifestBuildFullIncr(
++                    manifestPrelim, timestampCopyStart,
++                    cfgOptionBool(cfgOptRepoBundle) ? cfgOptionUInt64(cfgOptRepoBundleLimit) : 0);
++
++                // Calculate the expected size of the preliminary copy
++                copySizePrelim = backupManifestCopySize(manifestPrelim);
++
++                // If not delta, then reduce final copy size by the prelim copy size
++                if (!cfgOptionBool(cfgOptDelta))
++                    copySizeFinal -= copySizePrelim;
++
++                // Perform preliminary copy if there are any files to copy
++                if (manifestFileTotal(manifestPrelim) > 0)
++                {
++                    // Report limit of files to be copied in the preliminary copy
++                    LOG_INFO_FMT(
++                        "full/incr backup preliminary copy of files last modified before %s",
++                        strZ(strNewTimeP("%Y-%m-%d %H:%M:%S", timestampCopyStart)));
++
++                    // Wait for replay on the standby to catch up
++                    const String *const checkpointLsn = pgLsnToStr(backupData->checkpoint);
++
++                    if (backupData->dbStandby != NULL)
++                    {
++                        LOG_INFO_FMT("wait for replay on the standby to reach %s", strZ(checkpointLsn));
++                        dbReplayWait(
++                            backupData->dbStandby, checkpointLsn, backupData->timeline, cfgOptionUInt64(cfgOptArchiveTimeout));
++                        LOG_INFO_FMT("replay on the standby reached %s", strZ(checkpointLsn));
++                    }
++
++                    // Validate the manifest using the copy start time
++                    manifestBuildValidate(
++                        manifestPrelim, cfgOptionBool(cfgOptDelta), timestampCopyStart,
++                        compressTypeEnum(cfgOptionStrId(cfgOptCompressType)));
++
++                    // Set cipher passphrase (if any)
++                    manifestCipherSubPassSet(manifestPrelim, cipherPassGen(cfgOptionStrId(cfgOptRepoCipherType)));
++
++                    // Resume a backup when possible
++                    backupResume(manifestPrelim, cipherPassBackup);
++
++                    // Save the manifest before processing starts
++                    backupManifestSaveCopy(manifestPrelim, cipherPassBackup, false);
++
++                    // Process the backup manifest
++                    backupProcess(backupData, manifestPrelim, true, cipherPassBackup, 0, copySizeFinal);
++
++                    // Move manifest to prior context
++                    manifestPrior = manifestMove(manifestPrelim, memContextPrior());
++                }
++            }
++            MEM_CONTEXT_TEMP_END();
++        }
+ 
+         // Start the backup
+         const BackupStartResult backupStartResult = backupStart(backupData);
+ 
+         // Build the manifest
+-        const ManifestBlockIncrMap blockIncrMap = backupBlockIncrMap();
+-
+         Manifest *const manifest = manifestNewBuild(
+             backupData->storagePrimary, infoPg.version, infoPg.catalogVersion, timestampStart, cfgOptionBool(cfgOptOnline),
+             cfgOptionBool(cfgOptChecksumPage), cfgOptionBool(cfgOptRepoBundle), cfgOptionBool(cfgOptRepoBlock), &blockIncrMap,
+@@ -2600,20 +2792,23 @@ cmdBackup(void)
+         if (!cfgOptionBool(cfgOptDelta) && varBool(manifestData(manifest)->backupOptionDelta))
+             cfgOptionSet(cfgOptDelta, cfgSourceParam, BOOL_TRUE_VAR);
+ 
+-        // Resume a backup when possible
+-        if (!backupResume(manifest, cipherPassBackup))
++        // For a full backup with a preliminary copy do the equivalent of a resume cleanup
++        if (cfgOptionStrId(cfgOptType) == backupTypeFull && manifestPrior != NULL)
+         {
+-            manifestBackupLabelSet(
+-                manifest,
+-                backupLabelCreate(
+-                    (BackupType)cfgOptionStrId(cfgOptType), manifestData(manifest)->backupLabelPrior, timestampStart));
++            LOG_INFO("full/incr backup cleanup");
++            manifestDeltaCheck(manifest, manifestPrior);
++            backupResumeClean(manifest, manifestPrior, false, varBool(manifestData(manifest)->backupOptionDelta));
++            LOG_INFO("full/incr backup final copy");
+         }
++        // Else normal resume
++        else
++            backupResume(manifest, cipherPassBackup);
+ 
+         // Save the manifest before processing starts
+         backupManifestSaveCopy(manifest, cipherPassBackup, false);
+ 
+         // Process the backup manifest
+-        backupProcess(backupData, manifest, cipherPassBackup);
++        backupProcess(backupData, manifest, false, cipherPassBackup, copySizePrelim, 0);
+ 
+         // Check that the clusters are alive and correctly configured after the backup
+         backupDbPing(backupData, true);
+diff --git a/src/command/backup/file.c b/src/command/backup/file.c
+index d71bba75b..abbd9ceb1 100644
+--- a/src/command/backup/file.c
++++ b/src/command/backup/file.c
+@@ -109,17 +109,14 @@ backupFile(
+                         {
+                             pgFileMatch = true;
+ 
+-                            // If it matches and is a reference to a previous backup then no need to copy the file
+-                            if (file->manifestFileHasReference)
++                            // If it matches then no need to copy the file
++                            MEM_CONTEXT_BEGIN(lstMemContext(result))
+                             {
+-                                MEM_CONTEXT_BEGIN(lstMemContext(result))
+-                                {
+-                                    fileResult->backupCopyResult = backupCopyResultNoOp;
+-                                    fileResult->copySize = file->pgFileSize;
+-                                    fileResult->copyChecksum = file->pgFileChecksum;
+-                                }
+-                                MEM_CONTEXT_END();
++                                fileResult->backupCopyResult = backupCopyResultNoOp;
++                                fileResult->copySize = file->pgFileSize;
++                                fileResult->copyChecksum = file->pgFileChecksum;
+                             }
++                            MEM_CONTEXT_END();
+                         }
+                     }
+                     // Else the source file is missing from the database so skip this file
+@@ -127,20 +124,14 @@ backupFile(
+                         fileResult->backupCopyResult = backupCopyResultSkip;
+                 }
+ 
+-                // On resume check the manifest file
+-                if (file->manifestFileResume)
++                // On resume check the manifest file if it still exists in pg
++                if (file->manifestFileResume && fileResult->backupCopyResult != backupCopyResultSkip)
+                 {
+                     // Resumed files should never have a reference to a prior backup
+                     ASSERT(!file->manifestFileHasReference);
+ 
+-                    // If the file is missing from pg, then remove it from the repo (backupJobResult() will remove it from the
+-                    // manifest)
+-                    if (fileResult->backupCopyResult == backupCopyResultSkip)
+-                    {
+-                        storageRemoveP(storageRepoWrite(), repoFile);
+-                    }
+-                    // Else if the pg file matches or is unknown because delta was not performed then check the repo file
+-                    else if (!file->pgFileDelta || pgFileMatch)
++                    // If the pg file matches or is unknown because delta was not performed then check the repo file
++                    if (!file->pgFileDelta || pgFileMatch)
+                     {
+                         // Generate checksum/size for the repo file
+                         IoRead *const read = storageReadIo(storageNewReadP(storageRepo(), repoFile));
+@@ -170,7 +161,11 @@ backupFile(
+                         }
+                         // Else copy when repo file is invalid
+                         else
++                        {
++                            // Delta may have changed the result so set it back to copy
++                            fileResult->backupCopyResult = backupCopyResultCopy;
+                             fileResult->repoInvalid = true;
++                        }
+                     }
+                 }
+             }
+@@ -433,6 +428,11 @@ backupFile(
+                     else
+                         fileResult->backupCopyResult = backupCopyResultSkip;
+                 }
++
++                // Remove the file if it was skipped and not bundled. The file will not always exist, but does need to be removed in
++                // the case where the file existed before a resume or in the preliminary phase of a full/incr backup.
++                if (fileResult->backupCopyResult == backupCopyResultSkip && bundleId == 0)
++                    storageRemoveP(storageRepoWrite(), repoFile);
+             }
+             MEM_CONTEXT_TEMP_END();
+         }
+diff --git a/src/common/time.h b/src/common/time.h
+index da9cd562c..812a95012 100644
+--- a/src/common/time.h
++++ b/src/common/time.h
+@@ -18,6 +18,7 @@ Constants describing number of sub-units in an interval
+ ***********************************************************************************************************************************/
+ #define MSEC_PER_SEC                                                ((TimeMSec)1000)
+ #define SEC_PER_DAY                                                 ((time_t)86400)
++#define SEC_PER_MIN                                                 ((time_t)60)
+ 
+ /***********************************************************************************************************************************
+ Functions
+diff --git a/src/config/config.auto.h b/src/config/config.auto.h
+index 7db21d5d5..b4d681ada 100644
+--- a/src/config/config.auto.h
++++ b/src/config/config.auto.h
+@@ -54,6 +54,7 @@ Option constants
+ #define CFGOPT_ARCHIVE_MODE_CHECK                                   "archive-mode-check"
+ #define CFGOPT_ARCHIVE_PUSH_QUEUE_MAX                               "archive-push-queue-max"
+ #define CFGOPT_ARCHIVE_TIMEOUT                                      "archive-timeout"
++#define CFGOPT_BACKUP_FULL_INCR                                     "backup-full-incr"
+ #define CFGOPT_BACKUP_STANDBY                                       "backup-standby"
+ #define CFGOPT_BETA                                                 "beta"
+ #define CFGOPT_BUFFER_SIZE                                          "buffer-size"
+@@ -139,7 +140,7 @@ Option constants
+ #define CFGOPT_VERBOSE                                              "verbose"
+ #define CFGOPT_VERSION                                              "version"
+ 
+-#define CFG_OPTION_TOTAL                                            184
++#define CFG_OPTION_TOTAL                                            185
+ 
+ /***********************************************************************************************************************************
+ Option value constants
+@@ -405,6 +406,7 @@ typedef enum
+     cfgOptArchiveModeCheck,
+     cfgOptArchivePushQueueMax,
+     cfgOptArchiveTimeout,
++    cfgOptBackupFullIncr,
+     cfgOptBackupStandby,
+     cfgOptBeta,
+     cfgOptBufferSize,
+diff --git a/src/config/parse.auto.c.inc b/src/config/parse.auto.c.inc
+index a77a5ad0d..4f7bf62c0 100644
+--- a/src/config/parse.auto.c.inc
++++ b/src/config/parse.auto.c.inc
+@@ -1408,6 +1408,52 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
+         ),                                                                                                    // opt/archive-timeout
+     ),                                                                                                        // opt/archive-timeout
+     // -----------------------------------------------------------------------------------------------------------------------------
++    PARSE_RULE_OPTION                                                                                        // opt/backup-full-incr
++    (                                                                                                        // opt/backup-full-incr
++        PARSE_RULE_OPTION_NAME("backup-full-incr"),                                                          // opt/backup-full-incr
++        PARSE_RULE_OPTION_TYPE(Boolean),                                                                     // opt/backup-full-incr
++        PARSE_RULE_OPTION_NEGATE(true),                                                                      // opt/backup-full-incr
++        PARSE_RULE_OPTION_RESET(true),                                                                       // opt/backup-full-incr
++        PARSE_RULE_OPTION_REQUIRED(true),                                                                    // opt/backup-full-incr
++        PARSE_RULE_OPTION_SECTION(Global),                                                                   // opt/backup-full-incr
++                                                                                                             // opt/backup-full-incr
++        PARSE_RULE_OPTION_COMMAND_ROLE_MAIN_VALID_LIST                                                       // opt/backup-full-incr
++        (                                                                                                    // opt/backup-full-incr
++            PARSE_RULE_OPTION_COMMAND(Backup)                                                                // opt/backup-full-incr
++        ),                                                                                                   // opt/backup-full-incr
++                                                                                                             // opt/backup-full-incr
++        PARSE_RULE_OPTIONAL                                                                                  // opt/backup-full-incr
++        (                                                                                                    // opt/backup-full-incr
++            PARSE_RULE_OPTIONAL_GROUP                                                                        // opt/backup-full-incr
++            (                                                                                                // opt/backup-full-incr
++                PARSE_RULE_FILTER_CMD                                                                        // opt/backup-full-incr
++                (                                                                                            // opt/backup-full-incr
++                    PARSE_RULE_VAL_CMD(Backup),                                                              // opt/backup-full-incr
++                ),                                                                                           // opt/backup-full-incr
++                                                                                                             // opt/backup-full-incr
++                PARSE_RULE_OPTIONAL_DEPEND                                                                   // opt/backup-full-incr
++                (                                                                                            // opt/backup-full-incr
++                    PARSE_RULE_OPTIONAL_DEPEND_DEFAULT(PARSE_RULE_VAL_BOOL_FALSE),                           // opt/backup-full-incr
++                    PARSE_RULE_VAL_OPT(Online),                                                              // opt/backup-full-incr
++                    PARSE_RULE_VAL_BOOL_TRUE,                                                                // opt/backup-full-incr
++                ),                                                                                           // opt/backup-full-incr
++                                                                                                             // opt/backup-full-incr
++                PARSE_RULE_OPTIONAL_DEFAULT                                                                  // opt/backup-full-incr
++                (                                                                                            // opt/backup-full-incr
++                    PARSE_RULE_VAL_BOOL_FALSE,                                                               // opt/backup-full-incr
++                ),                                                                                           // opt/backup-full-incr
++            ),                                                                                               // opt/backup-full-incr
++                                                                                                             // opt/backup-full-incr
++            PARSE_RULE_OPTIONAL_GROUP                                                                        // opt/backup-full-incr
++            (                                                                                                // opt/backup-full-incr
++                PARSE_RULE_OPTIONAL_DEFAULT                                                                  // opt/backup-full-incr
++                (                                                                                            // opt/backup-full-incr
++                    PARSE_RULE_VAL_BOOL_FALSE,                                                               // opt/backup-full-incr
++                ),                                                                                           // opt/backup-full-incr
++            ),                                                                                               // opt/backup-full-incr
++        ),                                                                                                   // opt/backup-full-incr
++    ),                                                                                                       // opt/backup-full-incr
++    // -----------------------------------------------------------------------------------------------------------------------------
+     PARSE_RULE_OPTION                                                                                          // opt/backup-standby
+     (                                                                                                          // opt/backup-standby
+         PARSE_RULE_OPTION_NAME("backup-standby"),                                                              // opt/backup-standby
+@@ -11121,6 +11167,7 @@ static const uint8_t optionResolveOrder[] =
+     cfgOptArchiveCheck,                                                                                         // opt-resolve-order
+     cfgOptArchiveCopy,                                                                                          // opt-resolve-order
+     cfgOptArchiveModeCheck,                                                                                     // opt-resolve-order
++    cfgOptBackupFullIncr,                                                                                       // opt-resolve-order
+     cfgOptForce,                                                                                                // opt-resolve-order
+     cfgOptPgDatabase,                                                                                           // opt-resolve-order
+     cfgOptPgHost,                                                                                               // opt-resolve-order
+diff --git a/src/db/db.c b/src/db/db.c
+index de704b312..b98a3853f 100644
+--- a/src/db/db.c
++++ b/src/db/db.c
+@@ -701,7 +701,7 @@ dbReplayWait(Db *const this, const String *const targetLsn, const uint32_t targe
+             {
+                 // Build the query
+                 const String *const query = strNewFmt(
+-                    "select (checkpoint_%s > '%s')::bool as targetReached,\n"
++                    "select (checkpoint_%s >= '%s')::bool as targetReached,\n"
+                     "       checkpoint_%s::text as checkpointLsn\n"
+                     "  from pg_catalog.pg_control_checkpoint()",
+                     lsnName, strZ(targetLsn), lsnName);
+diff --git a/src/info/manifest.c b/src/info/manifest.c
+index ca1a334ea..c677bdc28 100644
+--- a/src/info/manifest.c
++++ b/src/info/manifest.c
+@@ -1566,6 +1566,61 @@ manifestBuildValidate(Manifest *const this, const bool delta, const time_t copyS
+     FUNCTION_LOG_RETURN_VOID();
+ }
+ 
++/**********************************************************************************************************************************/
++FN_EXTERN void
++manifestDeltaCheck(Manifest *const this, const Manifest *const manifestPrior)
++{
++    FUNCTION_LOG_BEGIN(logLevelDebug);
++        FUNCTION_LOG_PARAM(MANIFEST, this);
++        FUNCTION_LOG_PARAM(MANIFEST, manifestPrior);
++    FUNCTION_LOG_END();
++
++    MEM_CONTEXT_TEMP_BEGIN()
++    {
++        // Check for anomalies between manifests if delta is not already enabled
++        if (!varBool(this->pub.data.backupOptionDelta))
++        {
++            for (unsigned int fileIdx = 0; fileIdx < manifestFileTotal(this); fileIdx++)
++            {
++                const ManifestFile file = manifestFile(this, fileIdx);
++
++                // If file was found in prior manifest then perform checks
++                if (manifestFileExists(manifestPrior, file.name))
++                {
++                    const ManifestFile filePrior = manifestFileFind(manifestPrior, file.name);
++
++                    // Check for timestamp earlier than the prior backup
++                    if (file.timestamp < filePrior.timestamp)
++                    {
++                        LOG_WARN_FMT(
++                            "file '%s' has timestamp earlier than prior backup (prior %" PRId64 ", current %" PRId64 "), enabling"
++                            " delta checksum",
++                            strZ(manifestPathPg(file.name)), (int64_t)filePrior.timestamp, (int64_t)file.timestamp);
++
++                        this->pub.data.backupOptionDelta = BOOL_TRUE_VAR;
++                        break;
++                    }
++
++                    // Check for size change with no timestamp change
++                    if (file.sizeOriginal != filePrior.sizeOriginal && file.timestamp == filePrior.timestamp)
++                    {
++                        LOG_WARN_FMT(
++                            "file '%s' has same timestamp (%" PRId64 ") as prior but different size (prior %" PRIu64 ", current"
++                            " %" PRIu64 "), enabling delta checksum",
++                            strZ(manifestPathPg(file.name)), (int64_t)file.timestamp, filePrior.sizeOriginal, file.sizeOriginal);
++
++                        this->pub.data.backupOptionDelta = BOOL_TRUE_VAR;
++                        break;
++                    }
++                }
++            }
++        }
++    }
++    MEM_CONTEXT_TEMP_END();
++
++    FUNCTION_LOG_RETURN_VOID();
++}
++
+ /**********************************************************************************************************************************/
+ FN_EXTERN void
+ manifestBuildIncr(
+@@ -1623,45 +1678,8 @@ manifestBuildIncr(
+             this->pub.data.backupOptionDelta = BOOL_TRUE_VAR;
+         }
+ 
+-        // Check for anomalies between manifests if delta is not already enabled. This can't be combined with the main comparison
+-        // loop below because delta changes the behavior of that loop.
+-        if (!varBool(this->pub.data.backupOptionDelta))
+-        {
+-            for (unsigned int fileIdx = 0; fileIdx < manifestFileTotal(this); fileIdx++)
+-            {
+-                const ManifestFile file = manifestFile(this, fileIdx);
+-
+-                // If file was found in prior manifest then perform checks
+-                if (manifestFileExists(manifestPrior, file.name))
+-                {
+-                    const ManifestFile filePrior = manifestFileFind(manifestPrior, file.name);
+-
+-                    // Check for timestamp earlier than the prior backup
+-                    if (file.timestamp < filePrior.timestamp)
+-                    {
+-                        LOG_WARN_FMT(
+-                            "file '%s' has timestamp earlier than prior backup (prior %" PRId64 ", current %" PRId64 "), enabling"
+-                            " delta checksum",
+-                            strZ(manifestPathPg(file.name)), (int64_t)filePrior.timestamp, (int64_t)file.timestamp);
+-
+-                        this->pub.data.backupOptionDelta = BOOL_TRUE_VAR;
+-                        break;
+-                    }
+-
+-                    // Check for size change with no timestamp change
+-                    if (file.sizeOriginal != filePrior.sizeOriginal && file.timestamp == filePrior.timestamp)
+-                    {
+-                        LOG_WARN_FMT(
+-                            "file '%s' has same timestamp (%" PRId64 ") as prior but different size (prior %" PRIu64 ", current"
+-                            " %" PRIu64 "), enabling delta checksum",
+-                            strZ(manifestPathPg(file.name)), (int64_t)file.timestamp, filePrior.sizeOriginal, file.sizeOriginal);
+-
+-                        this->pub.data.backupOptionDelta = BOOL_TRUE_VAR;
+-                        break;
+-                    }
+-                }
+-            }
+-        }
++        // Enable delta if/when there are timestamp anomalies
++        manifestDeltaCheck(this, manifestPrior);
+ 
+         // Find files to (possibly) reference in the prior manifest
+         const bool delta = varBool(this->pub.data.backupOptionDelta);
+@@ -1748,6 +1766,51 @@ manifestBuildIncr(
+     FUNCTION_LOG_RETURN_VOID();
+ }
+ 
++/**********************************************************************************************************************************/
++FN_EXTERN void
++manifestBuildFullIncr(Manifest *const this, const time_t timeLimit, const uint64_t bundleLimit)
++{
++    FUNCTION_LOG_BEGIN(logLevelDebug);
++        FUNCTION_LOG_PARAM(MANIFEST, this);
++        FUNCTION_LOG_PARAM(TIME, timeLimit);
++        FUNCTION_LOG_PARAM(UINT64, bundleLimit);
++    FUNCTION_LOG_END();
++
++    ASSERT(this != NULL);
++    ASSERT(timeLimit > 0);
++    ASSERT(!this->pub.data.bundle || bundleLimit > 0);
++    ASSERT(this->pub.data.backupType == backupTypeFull);
++
++    MEM_CONTEXT_OBJ_BEGIN(this)
++    {
++        // New filtered file list to replace the old one
++        List *const fileList = lstNewP(sizeof(ManifestFilePack *), .comparator = lstComparatorStr);
++
++        MEM_CONTEXT_OBJ_BEGIN(fileList)
++        {
++            // Iterate all files
++            for (unsigned int fileIdx = 0; fileIdx < manifestFileTotal(this); fileIdx++)
++            {
++                const ManifestFile file = manifestFile(this, fileIdx);
++
++                // Keep files older than the time limit and not bundled
++                if (file.timestamp <= timeLimit && (!this->pub.data.bundle || file.size > bundleLimit))
++                {
++                    const ManifestFilePack *const filePack = manifestFilePack(this, &file);
++                    lstAdd(fileList, &filePack);
++                }
++            }
++        }
++        MEM_CONTEXT_OBJ_END();
++
++        lstFree(this->pub.fileList);
++        this->pub.fileList = fileList;
++    }
++    MEM_CONTEXT_OBJ_END();
++
++    FUNCTION_LOG_RETURN_VOID();
++}
++
+ /**********************************************************************************************************************************/
+ FN_EXTERN void
+ manifestBuildComplete(
+diff --git a/src/info/manifest.h b/src/info/manifest.h
+index 0562aeea0..8887be87e 100644
+--- a/src/info/manifest.h
++++ b/src/info/manifest.h
+@@ -278,6 +278,9 @@ FN_EXTERN void manifestBuildValidate(Manifest *this, bool delta, time_t copyStar
+ // Create a diff/incr backup by comparing to a previous backup manifest
+ FN_EXTERN void manifestBuildIncr(Manifest *this, const Manifest *prior, BackupType type, const String *archiveStart);
+ 
++// Filter existing file list to remove files not required for the preliminary copy of a full/incr backup
++FN_EXTERN void manifestBuildFullIncr(Manifest *this, time_t timeLimit, uint64_t bundleLimit);
++
+ // Set remaining values before the final save
+ FN_EXTERN void manifestBuildComplete(
+     Manifest *this, const String *lsnStart, const String *archiveStart, time_t timestampStop, const String *lsnStop,
+@@ -304,6 +307,10 @@ FN_EXTERN void manifestSave(Manifest *this, IoWrite *write);
+ // Validate a completed manifest. Use strict mode only when saving the manifest after a backup.
+ FN_EXTERN void manifestValidate(Manifest *this, bool strict);
+ 
++// Enable delta backup if timestamp anomalies are found, e.g. if a file has changed size since the prior backup but the timestamp
++// has not changed
++FN_EXTERN void manifestDeltaCheck(Manifest *this, const Manifest *manifestPrior);
++
+ /***********************************************************************************************************************************
+ Db functions and getters/setters
+ ***********************************************************************************************************************************/
+diff --git a/src/postgres/interface.h b/src/postgres/interface.h
+index e628591b6..8d2cf075a 100644
+--- a/src/postgres/interface.h
++++ b/src/postgres/interface.h
+@@ -101,6 +101,7 @@ typedef struct PgControl
+     unsigned int catalogVersion;
+ 
+     uint64_t checkpoint;                                            // Last checkpoint LSN
++    time_t checkpointTime;                                          // Last checkpoint time
+     uint32_t timeline;                                              // Current timeline
+ 
+     PgPageSize pageSize;
+diff --git a/src/postgres/interface/version.intern.h b/src/postgres/interface/version.intern.h
+index 5ab69d453..3785214ce 100644
+--- a/src/postgres/interface/version.intern.h
++++ b/src/postgres/interface/version.intern.h
+@@ -67,6 +67,7 @@ Read the version specific pg_control into a general data structure
+             .systemId = ((const ControlFileData *)controlFile)->system_identifier,                                                 \
+             .catalogVersion = ((const ControlFileData *)controlFile)->catalog_version_no,                                          \
+             .checkpoint = ((const ControlFileData *)controlFile)->checkPoint,                                                      \
++            .checkpointTime = (time_t)((const ControlFileData *)controlFile)->checkPointCopy.time,                                 \
+             .timeline = ((const ControlFileData *)controlFile)->checkPointCopy.ThisTimeLineID,                                     \
+             .pageSize = ((const ControlFileData *)controlFile)->blcksz,                                                            \
+             .walSegmentSize = ((const ControlFileData *)controlFile)->xlog_seg_size,                                               \
+diff --git a/test/src/common/harnessBackup.c b/test/src/common/harnessBackup.c
+index 82d82c1d3..ac0569335 100644
+--- a/test/src/common/harnessBackup.c
++++ b/test/src/common/harnessBackup.c
+@@ -73,6 +73,7 @@ hrnBackupScriptAdd(const HrnBackupScript *const script, const unsigned int scrip
+ 
+             hrnBackupLocal.script[hrnBackupLocal.scriptSize] = script[scriptIdx];
+             hrnBackupLocal.script[hrnBackupLocal.scriptSize].file = strDup(script[scriptIdx].file);
++            hrnBackupLocal.script[hrnBackupLocal.scriptSize].exec = script[scriptIdx].exec == 0 ? 1 : script[scriptIdx].exec;
+ 
+             if (script[scriptIdx].content != NULL)
+                 hrnBackupLocal.script[hrnBackupLocal.scriptSize].content = bufDup(script[scriptIdx].content);
+@@ -87,61 +88,106 @@ void
+ hrnBackupScriptSet(const HrnBackupScript *const script, const unsigned int scriptSize)
+ {
+     if (hrnBackupLocal.scriptSize != 0)
+-        THROW(AssertError, "previous pq script has not yet completed");
++        THROW(AssertError, "previous backup script has not yet completed");
+ 
+     hrnBackupScriptAdd(script, scriptSize);
+ }
+ 
+ /**********************************************************************************************************************************/
+ static void
+-backupProcess(const BackupData *const backupData, Manifest *const manifest, const String *const cipherPassBackup)
++backupProcessScript(const bool after)
+ {
+     FUNCTION_HARNESS_BEGIN();
+-        FUNCTION_HARNESS_PARAM(BACKUP_DATA, backupData);
+-        FUNCTION_HARNESS_PARAM(MANIFEST, manifest);
+-        FUNCTION_HARNESS_PARAM(STRING, cipherPassBackup);
++        FUNCTION_HARNESS_PARAM(BOOL, after);
+     FUNCTION_HARNESS_END();
+ 
+     // If any file changes are scripted then make them
+     if (hrnBackupLocal.scriptSize != 0)
+     {
++        bool done = true;
++
+         MEM_CONTEXT_TEMP_BEGIN()
+         {
+             Storage *const storageTest = storagePosixNewP(strNewZ(testPath()), .write = true);
+ 
+             for (unsigned int scriptIdx = 0; scriptIdx < hrnBackupLocal.scriptSize; scriptIdx++)
+             {
+-                switch (hrnBackupLocal.script[scriptIdx].op)
++                // Do not perform ops that have already run
++                if (hrnBackupLocal.script[scriptIdx].exec != 0)
+                 {
+-                    // Remove file
+-                    case hrnBackupScriptOpRemove:
+-                        storageRemoveP(storageTest, hrnBackupLocal.script[scriptIdx].file);
+-                        break;
+-
+-                    // Update file
+-                    case hrnBackupScriptOpUpdate:
+-                        storagePutP(
+-                            storageNewWriteP(
+-                                storageTest, hrnBackupLocal.script[scriptIdx].file,
+-                                .timeModified = hrnBackupLocal.script[scriptIdx].time),
+-                            hrnBackupLocal.script[scriptIdx].content == NULL ?
+-                                BUFSTRDEF("") : hrnBackupLocal.script[scriptIdx].content);
+-                        break;
+-
+-                    default:
+-                        THROW_FMT(
+-                            AssertError, "unknown backup script op '%s'", strZ(strIdToStr(hrnBackupLocal.script[scriptIdx].op)));
++                    // Perform ops for this exec
++                    if (hrnBackupLocal.script[scriptIdx].exec == 1)
++                    {
++                        if (hrnBackupLocal.script[scriptIdx].after == after)
++                        {
++                            switch (hrnBackupLocal.script[scriptIdx].op)
++                            {
++                                // Remove file
++                                case hrnBackupScriptOpRemove:
++                                    storageRemoveP(storageTest, hrnBackupLocal.script[scriptIdx].file);
++                                    break;
++
++                                // Update file
++                                case hrnBackupScriptOpUpdate:
++                                    storagePutP(
++                                        storageNewWriteP(
++                                            storageTest, hrnBackupLocal.script[scriptIdx].file,
++                                            .timeModified = hrnBackupLocal.script[scriptIdx].time),
++                                        hrnBackupLocal.script[scriptIdx].content == NULL ?
++                                            BUFSTRDEF("") : hrnBackupLocal.script[scriptIdx].content);
++                                    break;
++
++                                default:
++                                    THROW_FMT(
++                                        AssertError, "unknown backup script op '%s'",
++                                        strZ(strIdToStr(hrnBackupLocal.script[scriptIdx].op)));
++                            }
++
++                            hrnBackupLocal.script[scriptIdx].exec = 0;
++                        }
++                        // Preserve op for after exec
++                        else
++                            done = false;
++                    }
++                    // Decrement exec count (and preserve op for next exec)
++                    else
++                    {
++                        // Only decrement when the after exec has run
++                        if (after)
++                            hrnBackupLocal.script[scriptIdx].exec--;
++
++                        done = false;
++                    }
+                 }
+             }
+         }
+         MEM_CONTEXT_TEMP_END();
+ 
+-        // Free script
+-        memContextFree(hrnBackupLocal.memContext);
+-        hrnBackupLocal.scriptSize = 0;
++        // Free script if all ops have been completed
++        if (done)
++        {
++            memContextFree(hrnBackupLocal.memContext);
++            hrnBackupLocal.scriptSize = 0;
++        }
+     }
+ 
+-    backupProcess_SHIMMED(backupData, manifest, cipherPassBackup);
++    FUNCTION_HARNESS_RETURN_VOID();
++}
++
++static void
++backupProcess(
++    const BackupData *const backupData, Manifest *const manifest, const bool preliminary, const String *const cipherPassBackup,
++    const uint64_t copySizePrelim, const uint64_t copySizeFinal)
++{
++    FUNCTION_HARNESS_BEGIN();
++        FUNCTION_HARNESS_PARAM(BACKUP_DATA, backupData);
++        FUNCTION_HARNESS_PARAM(MANIFEST, manifest);
++        FUNCTION_HARNESS_PARAM(STRING, cipherPassBackup);
++    FUNCTION_HARNESS_END();
++
++    backupProcessScript(false);
++    backupProcess_SHIMMED(backupData, manifest, preliminary, cipherPassBackup, copySizePrelim, copySizeFinal);
++    backupProcessScript(true);
+ 
+     FUNCTION_HARNESS_RETURN_VOID();
+ }
+@@ -201,6 +247,7 @@ hrnBackupPqScript(const unsigned int pgVersion, const time_t backupTimeStart, Hr
+ 
+         // Save pg_control with updated info
+         pgControl.checkpoint = lsnStart;
++        pgControl.checkpointTime = backupTimeStart - 60;
+         pgControl.timeline = param.timeline;
+ 
+         HRN_STORAGE_PUT(
+@@ -285,6 +332,32 @@ hrnBackupPqScript(const unsigned int pgVersion, const time_t backupTimeStart, Hr
+         // Get start time
+         HRN_PQ_SCRIPT_ADD(HRN_PQ_SCRIPT_TIME_QUERY(1, (int64_t)backupTimeStart * 1000));
+ 
++        // First phase of full/incr backup
++        const bool backupfullIncr =
++            param.fullIncr || (cfgOptionBool(cfgOptBackupFullIncr) && cfgOptionStrId(cfgOptType) == backupTypeFull);
++
++        if (backupfullIncr)
++        {
++            // Tablespace check
++            if (tablespace)
++                HRN_PQ_SCRIPT_ADD(HRN_PQ_SCRIPT_TABLESPACE_LIST_1(1, 32768, "tblspc32768"));
++            else
++                HRN_PQ_SCRIPT_ADD(HRN_PQ_SCRIPT_TABLESPACE_LIST_0(1));
++
++            if (!param.fullIncrNoOp)
++            {
++                // Wait for standby to sync
++                if (param.backupStandby)
++                    HRN_PQ_SCRIPT_ADD(HRN_PQ_SCRIPT_REPLAY_WAIT_96(2, lsnStartStr));
++
++                // Ping to check standby mode
++                HRN_PQ_SCRIPT_ADD(HRN_PQ_SCRIPT_IS_STANDBY_QUERY(1, false));
++
++                if (param.backupStandby)
++                    HRN_PQ_SCRIPT_ADD(HRN_PQ_SCRIPT_IS_STANDBY_QUERY(2, true));
++            }
++        }
++
+         // Get advisory lock and check if backup is in progress (only for exclusive backup)
+         if (pgVersion <= PG_VERSION_95)
+         {
+@@ -343,11 +416,15 @@ hrnBackupPqScript(const unsigned int pgVersion, const time_t backupTimeStart, Hr
+             // Continue if there is no error after start
+             if (!param.errorAfterStart)
+             {
+-                // Ping to check standby mode
+-                HRN_PQ_SCRIPT_ADD(HRN_PQ_SCRIPT_IS_STANDBY_QUERY(1, false));
++                // If full/incr then the first ping has already been done
++                if (!backupfullIncr || param.fullIncrNoOp)
++                {
++                    // Ping to check standby mode
++                    HRN_PQ_SCRIPT_ADD(HRN_PQ_SCRIPT_IS_STANDBY_QUERY(1, false));
+ 
+-                if (param.backupStandby)
+-                    HRN_PQ_SCRIPT_ADD(HRN_PQ_SCRIPT_IS_STANDBY_QUERY(2, true));
++                    if (param.backupStandby)
++                        HRN_PQ_SCRIPT_ADD(HRN_PQ_SCRIPT_IS_STANDBY_QUERY(2, true));
++                }
+ 
+                 // Continue if there is no error after copy start
+                 if (!param.errorAfterCopyStart)
+diff --git a/test/src/common/harnessBackup.h b/test/src/common/harnessBackup.h
+index f8ace1102..089f8f32b 100644
+--- a/test/src/common/harnessBackup.h
++++ b/test/src/common/harnessBackup.h
+@@ -22,6 +22,8 @@ typedef enum
+ typedef struct HrnBackupScript
+ {
+     HrnBackupScriptOp op;                                           // Operation to perform
++    unsigned int exec;                                              // Which function execution to perform the op (default is 1)
++    bool after;                                                     // Perform op after function instead of before
+     const String *file;                                             // File to operate on
+     const Buffer *content;                                          // New content (valid for update op)
+     time_t time;                                                    // New modified time (valid for update op)
+@@ -46,6 +48,8 @@ typedef struct HrnBackupPqScriptParam
+     bool noPriorWal;                                                // Don't write prior test WAL segments
+     bool noArchiveCheck;                                            // Do not check archive
+     bool walSwitch;                                                 // WAL switch is required
++    bool fullIncr;                                                  // Full/incr runs but cannot be auto-detected
++    bool fullIncrNoOp;                                              // Full/incr will not find any files for prelim copy
+     CompressType walCompressType;                                   // Compress type for the archive files
+     CipherType cipherType;                                          // Cipher type
+     const char *cipherPass;                                         // Cipher pass
+diff --git a/test/src/common/harnessHost.c b/test/src/common/harnessHost.c
+index 55c8e8503..5c81dec42 100644
+--- a/test/src/common/harnessHost.c
++++ b/test/src/common/harnessHost.c
+@@ -90,6 +90,7 @@ static struct HrnHostLocal
+     bool bundle;                                                    // Bundling enabled?
+     bool blockIncr;                                                 // Block incremental enabled?
+     bool archiveAsync;                                              // Async archiving enabled?
++    bool fullIncr;                                                  // Full/incr enabled?
+     bool nonVersionSpecific;                                        // Run non version-specific tests?
+     bool versioning;                                                // Is versioning enabled in the repo storage?
+ 
+@@ -637,7 +638,7 @@ hrnHostConfig(HrnHost *const this)
+         strCatZ(config, "\n");
+         strCatFmt(config, "log-path=%s\n", strZ(hrnHostLogPath(this)));
+         strCatZ(config, "log-level-console=warn\n");
+-        strCatZ(config, "log-level-file=info\n");
++        strCatZ(config, "log-level-file=detail\n");
+         strCatZ(config, "log-subprocess=n\n");
+ 
+         // Compress options
+@@ -696,6 +697,9 @@ hrnHostConfig(HrnHost *const this)
+                 strCatZ(config, "repo1-block=y\n");
+             }
+ 
++            if (hrnHostLocal.fullIncr)
++                strCatZ(config, "backup-full-incr=y\n");
++
+             switch (hrnHostLocal.storage)
+             {
+                 case STORAGE_AZURE_TYPE:
+@@ -1004,6 +1008,13 @@ hrnHostCompressType(void)
+     FUNCTION_HARNESS_RETURN(ENUM, hrnHostLocal.compressType);
+ }
+ 
++bool
++hrnHostFullIncr(void)
++{
++    FUNCTION_HARNESS_VOID();
++    FUNCTION_HARNESS_RETURN(BOOL, hrnHostLocal.fullIncr);
++}
++
+ bool
+ hrnHostNonVersionSpecific(void)
+ {
+@@ -1194,6 +1205,7 @@ hrnHostBuild(const int line, const HrnHostTestDefine *const testMatrix, const si
+         hrnHostLocal.tls = testDef->tls;
+         hrnHostLocal.bundle = testDef->bnd;
+         hrnHostLocal.blockIncr = testDef->bi;
++        hrnHostLocal.fullIncr = testDef->fi;
+         hrnHostLocal.nonVersionSpecific = strcmp(testDef->pg, testMatrix[testMatrixSize - 1].pg) == 0;
+     }
+     MEM_CONTEXT_END();
+@@ -1202,9 +1214,9 @@ hrnHostBuild(const int line, const HrnHostTestDefine *const testMatrix, const si
+     ASSERT(hrnHostLocal.repoHost == HRN_HOST_PG2 || hrnHostLocal.repoHost == HRN_HOST_REPO);
+ 
+     TEST_RESULT_INFO_LINE_FMT(
+-        line, "pg = %s, repo = %s, .tls = %d, stg = %s, enc = %d, cmp = %s, rt = %u, bnd = %d, bi = %d, nv = %d", testDef->pg,
+-        testDef->repo, testDef->tls, testDef->stg, testDef->enc, testDef->cmp, testDef->rt, testDef->bnd, testDef->bi,
+-        hrnHostLocal.nonVersionSpecific);
++        line, "pg = %s, repo = %s, .tls = %d, stg = %s, enc = %d, cmp = %s, rt = %u, bnd = %d, bi = %d, fi %d, nv = %d",
++        testDef->pg, testDef->repo, testDef->tls, testDef->stg, testDef->enc, testDef->cmp, testDef->rt, testDef->bnd, testDef->bi,
++        testDef->fi, hrnHostLocal.nonVersionSpecific);
+ 
+     // Create pg hosts
+     hrnHostBuildRun(line, HRN_HOST_PG1);
+diff --git a/test/src/common/harnessHost.h b/test/src/common/harnessHost.h
+index 7cfad97e4..57f8cfdd6 100644
+--- a/test/src/common/harnessHost.h
++++ b/test/src/common/harnessHost.h
+@@ -53,6 +53,7 @@ typedef struct HrnHostTestDefine
+     unsigned int rt;                                                // Repository total
+     bool bnd;                                                       // Bundling enabled?
+     bool bi;                                                        // Block incremental enabled?
++    bool fi;                                                        // Full/incr backup?
+ } HrnHostTestDefine;
+ 
+ /***********************************************************************************************************************************
+@@ -432,6 +433,9 @@ const String *hrnHostCipherPass(void);
+ // Compress Type
+ CompressType hrnHostCompressType(void);
+ 
++// Full/incr enabled
++bool hrnHostFullIncr(void);
++
+ // Non version-specific testing enabled
+ bool hrnHostNonVersionSpecific(void);
+ 
+diff --git a/test/src/common/harnessLog.c b/test/src/common/harnessLog.c
+index a353d8b95..d02525e35 100644
+--- a/test/src/common/harnessLog.c
++++ b/test/src/common/harnessLog.c
+@@ -304,6 +304,32 @@ hrnLogReplaceAdd(const char *expression, const char *expressionSub, const char *
+     FUNCTION_HARNESS_RETURN_VOID();
+ }
+ 
++void
++hrnLogReplaceRemove(const char *const expression)
++{
++    FUNCTION_HARNESS_BEGIN();
++        FUNCTION_HARNESS_PARAM(STRINGZ, expression);
++    FUNCTION_HARNESS_END();
++
++    unsigned int replaceIdx = 0;
++
++    for (; replaceIdx < lstSize(harnessLog.replaceList); replaceIdx++)
++    {
++        const HarnessLogReplace *const logReplace = lstGet(harnessLog.replaceList, replaceIdx);
++
++        if (strEqZ(logReplace->expression, expression))
++        {
++            lstRemoveIdx(harnessLog.replaceList, replaceIdx);
++            break;
++        }
++    }
++
++    if (replaceIdx == lstSize(harnessLog.replaceList))
++        THROW_FMT(AssertError, "expression '%s' not found in replace list", expression);
++
++    FUNCTION_HARNESS_RETURN_VOID();
++}
++
+ /**********************************************************************************************************************************/
+ void
+ hrnLogReplaceClear(void)
+diff --git a/test/src/common/harnessLog.h b/test/src/common/harnessLog.h
+index 67d76338a..06d6d53c1 100644
+--- a/test/src/common/harnessLog.h
++++ b/test/src/common/harnessLog.h
+@@ -20,6 +20,9 @@ void harnessLogFinal(void);
+ // Add log replacement
+ void hrnLogReplaceAdd(const char *expression, const char *expressionSub, const char *replacement, bool version);
+ 
++// Remove a log replacement
++void hrnLogReplaceRemove(const char *expression);
++
+ // Clear (remove) all log replacements
+ void hrnLogReplaceClear(void);
+ 
+diff --git a/test/src/common/harnessPostgres/harnessVersion.intern.h b/test/src/common/harnessPostgres/harnessVersion.intern.h
+index b72782cff..a987117e4 100644
+--- a/test/src/common/harnessPostgres/harnessVersion.intern.h
++++ b/test/src/common/harnessPostgres/harnessVersion.intern.h
+@@ -49,6 +49,7 @@ Create a pg_control file
+             .checkPoint = pgControl.checkpoint,                                                                                    \
+             .checkPointCopy =                                                                                                      \
+             {                                                                                                                      \
++                .time = (pg_time_t)pgControl.checkpointTime,                                                                       \
+                 .ThisTimeLineID = pgControl.timeline,                                                                              \
+             },                                                                                                                     \
+             .blcksz = pgControl.pageSize,                                                                                          \
+diff --git a/test/src/common/harnessPq.h b/test/src/common/harnessPq.h
+index 5463f101d..c0dda2a9a 100644
+--- a/test/src/common/harnessPq.h
++++ b/test/src/common/harnessPq.h
+@@ -534,7 +534,7 @@ Macros for defining groups of functions that implement various queries and comma
+     {.session = sessionParam,                                                                                                      \
+         .function = HRN_PQ_SENDQUERY,                                                                                              \
+         .param = zNewFmt(                                                                                                          \
+-            "[\"select (checkpoint_" lsnNameParam " > '%s')::bool as targetReached,\\n"                                            \
++            "[\"select (checkpoint_" lsnNameParam " >= '%s')::bool as targetReached,\\n"                                           \
+             "       checkpoint_" lsnNameParam "::text as checkpointLsn\\n"                                                         \
+             "  from pg_catalog.pg_control_checkpoint()\"]", targetLsnParam),                                                       \
+         .resultInt = 1, .sleep = sleepParam},                                                                                      \
+diff --git a/test/src/module/command/backupTest.c b/test/src/module/command/backupTest.c
+index da89081a0..7a6d3559c 100644
+--- a/test/src/module/command/backupTest.c
++++ b/test/src/module/command/backupTest.c
+@@ -2157,6 +2157,7 @@ testRun(void)
+             hrnCfgArgRaw(argList, cfgOptPgPath, pg1Path);
+             hrnCfgArgRawZ(argList, cfgOptRepoRetentionFull, "1");
+             hrnCfgArgRawStrId(argList, cfgOptType, backupTypeFull);
++            hrnCfgArgRawBool(argList, cfgOptBackupFullIncr, true);
+             hrnCfgArgRawBool(argList, cfgOptStopAuto, true);
+             hrnCfgArgRawBool(argList, cfgOptCompress, false);
+             hrnCfgArgRawBool(argList, cfgOptArchiveCheck, false);
+@@ -2197,7 +2198,7 @@ testRun(void)
+                         strNewFmt(STORAGE_REPO_BACKUP "/%s/" BACKUP_MANIFEST_FILE INFO_COPY_EXT, strZ(resumeLabel)))));
+ 
+             // Run backup
+-            hrnBackupPqScriptP(PG_VERSION_95, backupTimeStart, .noArchiveCheck = true, .noWal = true);
++            hrnBackupPqScriptP(PG_VERSION_95, backupTimeStart, .noArchiveCheck = true, .noWal = true, .fullIncrNoOp = true);
+ 
+             TEST_RESULT_VOID(hrnCmdBackup(), "backup");
+ 
+@@ -2541,7 +2542,7 @@ testRun(void)
+                         storageRepoWrite(),
+                         strNewFmt(STORAGE_REPO_BACKUP "/%s/" BACKUP_MANIFEST_FILE INFO_COPY_EXT, strZ(resumeLabel)))));
+ 
+-            // Back errors on backup type
++            // Backup errors on backup type
+             hrnBackupPqScriptP(PG_VERSION_95, backupTimeStart);
+             TEST_RESULT_VOID(hrnCmdBackup(), "backup");
+ 
+@@ -2593,6 +2594,7 @@ testRun(void)
+             hrnCfgArgKeyRaw(argList, cfgOptPgPath, 1, pg1Path);
+             hrnCfgArgKeyRaw(argList, cfgOptPgPath, 2, pg2Path);
+             hrnCfgArgKeyRawZ(argList, cfgOptPgPort, 2, "5433");
++            hrnCfgArgRawBool(argList, cfgOptBackupFullIncr, true);
+             hrnCfgArgRawZ(argList, cfgOptRepoRetentionFull, "1");
+             hrnCfgArgRawBool(argList, cfgOptCompress, false);
+             hrnCfgArgRawBool(argList, cfgOptBackupStandby, true);
+@@ -2605,7 +2607,7 @@ testRun(void)
+ 
+             // Create file to copy from the standby. This file will be zero-length on the primary and non-zero-length on the standby
+             // but no bytes will be copied.
+-            HRN_STORAGE_PUT_EMPTY(storagePgIdxWrite(0), PG_PATH_BASE "/1/1", .timeModified = backupTimeStart);
++            HRN_STORAGE_PUT_EMPTY(storagePgIdxWrite(0), PG_PATH_BASE "/1/1", .timeModified = backupTimeStart - 7200);
+             HRN_STORAGE_PUT_Z(storagePgIdxWrite(1), PG_PATH_BASE "/1/1", "1234");
+ 
+             // Create file to copy from the standby. This file will be smaller on the primary than the standby and have no common
+@@ -2629,7 +2631,7 @@ testRun(void)
+             // Run backup but error on first archive check
+             hrnBackupPqScriptP(
+                 PG_VERSION_96, backupTimeStart, .noPriorWal = true, .backupStandby = true, .walCompressType = compressTypeGz,
+-                .startFast = true);
++                .startFast = true, .fullIncr = true);
+             TEST_ERROR(
+                 hrnCmdBackup(), ArchiveTimeoutError,
+                 "WAL segment 0000000105DA69BF000000FF was not archived before the 100ms timeout\n"
+@@ -2637,6 +2639,12 @@ testRun(void)
+                 "HINT: check the PostgreSQL server log for errors.\n"
+                 "HINT: run the 'start' command if the stanza was previously stopped.");
+ 
++            TEST_RESULT_LOG(
++                "P00   WARN: no prior backup exists, incr backup has been changed to full");
++
++            // Remove halted backup so there's no resume
++            HRN_STORAGE_PATH_REMOVE(storageRepoWrite(), STORAGE_REPO_BACKUP "/20191016-042640F", .recurse = true);
++
+             // Run backup but error on archive check
+             hrnBackupPqScriptP(
+                 PG_VERSION_96, backupTimeStart, .noWal = true, .backupStandby = true, .walCompressType = compressTypeGz,
+@@ -2660,8 +2668,11 @@ testRun(void)
+             const String *archiveInfoContent = strNewBuf(storageGetP(storageNewReadP(storageRepo(), INFO_ARCHIVE_PATH_FILE_STR)));
+ 
+             // Run backup
++            HRN_CFG_LOAD(cfgCmdBackup, argList);
++
+             hrnBackupPqScriptP(
+-                PG_VERSION_96, backupTimeStart, .backupStandby = true, .walCompressType = compressTypeGz, .startFast = true);
++                PG_VERSION_96, backupTimeStart, .backupStandby = true, .walCompressType = compressTypeGz, .startFast = true,
++                .fullIncr = true);
+             TEST_RESULT_VOID(hrnCmdBackup(), "backup");
+ 
+             // Check archive.info/copy timestamp was updated but contents were not
+@@ -2683,7 +2694,7 @@ testRun(void)
+                 ".> {d=20191016-042640F}\n"
+                 "pg_data/PG_VERSION {s=3}\n"
+                 "pg_data/backup_label {s=17, ts=+2}\n"
+-                "pg_data/base/1/1 {s=0}\n"
++                "pg_data/base/1/1 {s=0, ts=-7200}\n"
+                 "pg_data/base/1/2 {s=2}\n"
+                 "pg_data/base/1/3 {s=3, so=4}\n"
+                 "pg_data/global/pg_control {s=8192}\n"
+@@ -2992,7 +3003,8 @@ testRun(void)
+             ((Storage *)storageRepoWrite())->pub.interface.feature ^= 1 << storageFeatureHardLink;
+ 
+             // Run backup
+-            hrnBackupPqScriptP(PG_VERSION_11, backupTimeStart, .walCompressType = compressTypeGz, .walTotal = 3, .walSwitch = true);
++            hrnBackupPqScriptP(
++                PG_VERSION_11, backupTimeStart, .walCompressType = compressTypeGz, .walTotal = 3, .walSwitch = true);
+             TEST_RESULT_VOID(hrnCmdBackup(), "backup");
+ 
+             // Reset storage features
+@@ -3139,7 +3151,8 @@ testRun(void)
+             HRN_BACKUP_SCRIPT_SET(
+                 {.op = hrnBackupScriptOpUpdate, .file = storagePathP(storagePg(), STRDEF(PG_PATH_BASE "/1/1")),
+                  .time = backupTimeStart, .content = relationAfter});
+-            hrnBackupPqScriptP(PG_VERSION_11, backupTimeStart, .timeline = 0x2C, .walTotal = 2, .walSwitch = true);
++            hrnBackupPqScriptP(
++                PG_VERSION_11, backupTimeStart, .timeline = 0x2C, .walTotal = 2, .walSwitch = true, .fullIncrNoOp = true);
+             TEST_RESULT_VOID(hrnCmdBackup(), "backup");
+ 
+             TEST_RESULT_LOG(
+@@ -3248,7 +3261,7 @@ testRun(void)
+             // Run backup
+             hrnBackupPqScriptP(
+                 PG_VERSION_11, backupTimeStart, .walCompressType = compressTypeGz, .walTotal = 2, .pgVersionForce = STRDEF("11"),
+-                .walSwitch = true);
++                .walSwitch = true, .fullIncrNoOp = true);
+             TEST_RESULT_VOID(hrnCmdBackup(), "backup");
+ 
+             TEST_RESULT_LOG(
+@@ -3335,7 +3348,8 @@ testRun(void)
+             HRN_STORAGE_PUT_EMPTY(storagePgWrite(), "zero", .timeModified = backupTimeStart);
+ 
+             // Run backup
+-            hrnBackupPqScriptP(PG_VERSION_11, backupTimeStart, .walCompressType = compressTypeGz, .walTotal = 2, .walSwitch = true);
++            hrnBackupPqScriptP(
++                PG_VERSION_11, backupTimeStart, .walCompressType = compressTypeGz, .walTotal = 2, .walSwitch = true);
+             TEST_RESULT_VOID(hrnCmdBackup(), "backup");
+ 
+             TEST_RESULT_LOG(
+@@ -3397,25 +3411,28 @@ testRun(void)
+             hrnCfgArgRaw(argList, cfgOptPgPath, pg1Path);
+             hrnCfgArgRawZ(argList, cfgOptRepoRetentionFull, "1");
+             hrnCfgArgRawStrId(argList, cfgOptType, backupTypeFull);
++            hrnCfgArgRawBool(argList, cfgOptBackupFullIncr, true);
+             hrnCfgArgRawZ(argList, cfgOptCompressType, "none");
+             hrnCfgArgRawBool(argList, cfgOptResume, false);
+             hrnCfgArgRawBool(argList, cfgOptRepoBundle, true);
+-            hrnCfgArgRawZ(argList, cfgOptRepoBundleLimit, "23kB");
++            hrnCfgArgRawZ(argList, cfgOptRepoBundleLimit, "8kB");
+             hrnCfgArgRawBool(argList, cfgOptRepoBlock, true);
+             hrnCfgArgRawZ(argList, cfgOptRepoBlockSizeMap, STRINGIFY(BLOCK_MAX_FILE_SIZE) "b=" STRINGIFY(BLOCK_MAX_SIZE) "b");
+             hrnCfgArgRawZ(argList, cfgOptRepoBlockSizeMap, STRINGIFY(BLOCK_MIN_FILE_SIZE) "=" STRINGIFY(BLOCK_MIN_SIZE));
+             hrnCfgArgRawZ(argList, cfgOptRepoBlockSizeMap, STRINGIFY(BLOCK_MID_FILE_SIZE) "=" STRINGIFY(BLOCK_MID_SIZE));
+             HRN_CFG_LOAD(cfgCmdBackup, argList);
+ 
+-            // File that uses block incr and will grow
+-            Buffer *file = bufNew(BLOCK_MIN_SIZE * 3);
+-            memset(bufPtr(file), 0, bufSize(file));
+-            bufUsedSet(file, bufSize(file));
++            // File that uses block incr and will grow (also updated before final pass)
++            Buffer *fileBlockIncrGrow = bufNew(BLOCK_MIN_SIZE * 3);
++            memset(bufPtr(fileBlockIncrGrow), 55, bufSize(fileBlockIncrGrow));
++            bufUsedSet(fileBlockIncrGrow, bufSize(fileBlockIncrGrow));
+ 
+-            HRN_STORAGE_PUT(storagePgWrite(), "block-incr-grow", file, .timeModified = backupTimeStart);
++            HRN_STORAGE_PUT(storagePgWrite(), "block-incr-grow", fileBlockIncrGrow, .timeModified = backupTimeStart - 7200);
++
++            memset(bufPtr(fileBlockIncrGrow), 0, bufSize(fileBlockIncrGrow));
+ 
+             // File that uses block incr and will not be resumed
+-            file = bufNew(BLOCK_MIN_SIZE * 3);
++            Buffer *file = bufNew(BLOCK_MIN_SIZE * 3);
+             memset(bufPtr(file), 0, bufSize(file));
+             bufUsedSet(file, bufSize(file));
+ 
+@@ -3423,7 +3440,7 @@ testRun(void)
+ 
+             // Error when pg_control is missing after backup start
+             HRN_BACKUP_SCRIPT_SET(
+-                {.op = hrnBackupScriptOpRemove, .file = storagePathP(storagePg(), STRDEF("global/pg_control"))});
++                {.op = hrnBackupScriptOpRemove, .exec = 2, .file = storagePathP(storagePg(), STRDEF("global/pg_control"))});
+             hrnBackupPqScriptP(
+                 PG_VERSION_11, backupTimeStart, .walCompressType = compressTypeGz, .walTotal = 2, .walSwitch = true,
+                 .errorAfterCopyStart = true);
+@@ -3432,33 +3449,101 @@ testRun(void)
+                 "raised from local-1 shim protocol: unable to open missing file '" TEST_PATH "/pg1/global/pg_control' for read");
+ 
+             TEST_RESULT_LOG(
++                "P00   INFO: full/incr backup preliminary copy of files last modified before 2019-11-03 16:51:20\n"
++                "P01 DETAIL: backup file " TEST_PATH "/pg1/block-incr-grow (24KB, [PCT]) checksum [SHA1]\n"
+                 "P00   INFO: execute non-exclusive backup start: backup begins after the next regular checkpoint completes\n"
+                 "P00   INFO: backup start archive = 0000000105DBF06000000000, lsn = 5dbf060/0\n"
+                 "P00   INFO: check archive for segment 0000000105DBF06000000000\n"
+-                "P01 DETAIL: backup file " TEST_PATH "/pg1/block-incr-no-resume (24KB, [PCT]) checksum [SHA1]\n"
+-                "P01 DETAIL: backup file " TEST_PATH "/pg1/block-incr-grow (24KB, [PCT]) checksum [SHA1]");
++                "P00   INFO: full/incr backup cleanup\n"
++                "P00   INFO: full/incr backup final copy\n"
++                "P01 DETAIL: backup file " TEST_PATH "/pg1/block-incr-no-resume (24KB, [PCT]) checksum [SHA1]");
+ 
+             HRN_PG_CONTROL_PUT(storagePgWrite(), PG_VERSION_11, .pageChecksumVersion = 0, .walSegmentSize = 2 * 1024 * 1024);
+ 
++            // File removed before final copy
++            file = bufNew(BLOCK_MIN_SIZE + 1);
++            memset(bufPtr(file), 71, bufSize(file));
++            bufUsedSet(file, bufSize(file));
++
++            HRN_STORAGE_PUT(storagePgWrite(), "rm-before-final-cp", file, .timeModified = backupTimeStart - 120);
++
++            // Bundled file removed before final copy
++            file = bufNew(BLOCK_MIN_SIZE);
++            memset(bufPtr(file), 22, bufSize(file));
++            bufUsedSet(file, bufSize(file));
++
++            HRN_STORAGE_PUT(storagePgWrite(), "rm-bnd-before-final-cp", file, .timeModified = backupTimeStart - 120);
++
++            // File time will change before the final copy and cause a delta
++            Buffer *fileTimeChange = bufNew(BLOCK_MIN_SIZE + 1);
++            memset(bufPtr(fileTimeChange), 0, bufSize(fileTimeChange));
++            bufUsedSet(fileTimeChange, bufSize(fileTimeChange));
++
++            HRN_STORAGE_PUT(storagePgWrite(), "time-change", fileTimeChange, .timeModified = backupTimeStart - 120);
++
++            // File removed after prelim copy and before final manifest build
++            file = bufNew(BLOCK_MIN_SIZE + 2);
++            memset(bufPtr(file), 71, bufSize(file));
++            bufUsedSet(file, bufSize(file));
++
++            HRN_STORAGE_PUT(storagePgWrite(), "rm-after-prelim-cp", file, .timeModified = backupTimeStart - 120);
++
++            // File just over the full/incr time limit
++            file = bufNew(BLOCK_MIN_SIZE + 3);
++            memset(bufPtr(file), 33, bufSize(file));
++            bufUsedSet(file, bufSize(file));
++
++            HRN_STORAGE_PUT(storagePgWrite(), "below-fi-limit", file, .timeModified = backupTimeStart - 119);
++
++            // Zero-length file that will not be copied due to bundling
++            HRN_STORAGE_PUT_EMPTY(storagePgWrite(), "empty", .timeModified = backupTimeStart - 119);
++
++            // Remove percentage log replacement to check progress reporting for full/incr
++            hrnLogReplaceRemove(", [0-9]{1,3}.[0-9]{1,2}%\\)");
++
+             // Run backup
++            HRN_BACKUP_SCRIPT_SET(
++                {.op = hrnBackupScriptOpUpdate, .after = true, .file = storagePathP(storagePg(), STRDEF("block-incr-grow")),
++                 .content = fileBlockIncrGrow, .time = backupTimeStart},
++                {.op = hrnBackupScriptOpUpdate, .after = true, .file = storagePathP(storagePg(), STRDEF("time-change")),
++                 .content = fileTimeChange, .time = backupTimeStart - 121},
++                {.op = hrnBackupScriptOpRemove, .after = true, .file = storagePathP(storagePg(), STRDEF("rm-after-prelim-cp"))},
++                {.op = hrnBackupScriptOpRemove, .exec = 2, .file = storagePathP(storagePg(), STRDEF("rm-bnd-before-final-cp"))},
++                {.op = hrnBackupScriptOpRemove, .exec = 2, .file = storagePathP(storagePg(), STRDEF("rm-before-final-cp"))});
+             hrnBackupPqScriptP(PG_VERSION_11, backupTimeStart, .walCompressType = compressTypeGz, .walTotal = 2, .walSwitch = true);
+             TEST_RESULT_VOID(hrnCmdBackup(), "backup");
+ 
+             TEST_RESULT_LOG(
++                "P00   INFO: full/incr backup preliminary copy of files last modified before 2019-11-03 16:51:20\n"
++                "P00   INFO: backup '20191103-165320F' cannot be resumed: partially deleted by prior resume or invalid\n"
++                "P01 DETAIL: backup file " TEST_PATH "/pg1/block-incr-grow (24KB, 24.99%) checksum [SHA1]\n"
++                "P01 DETAIL: backup file " TEST_PATH "/pg1/rm-after-prelim-cp (8KB, 33.33%) checksum [SHA1]\n"
++                "P01 DETAIL: backup file " TEST_PATH "/pg1/time-change (8KB, 41.66%) checksum [SHA1]\n"
++                "P01 DETAIL: backup file " TEST_PATH "/pg1/rm-before-final-cp (8KB, 49.99%) checksum [SHA1]\n"
+                 "P00   INFO: execute non-exclusive backup start: backup begins after the next regular checkpoint completes\n"
+                 "P00   INFO: backup start archive = 0000000105DBF06000000000, lsn = 5dbf060/0\n"
+                 "P00   INFO: check archive for segment 0000000105DBF06000000000\n"
+-                "P00   INFO: backup '20191103-165320F' cannot be resumed: partially deleted by prior resume or invalid\n"
+-                "P01 DETAIL: backup file " TEST_PATH "/pg1/block-incr-no-resume (24KB, [PCT]) checksum [SHA1]\n"
+-                "P01 DETAIL: backup file " TEST_PATH "/pg1/block-incr-grow (24KB, [PCT]) checksum [SHA1]\n"
+-                "P01 DETAIL: backup file " TEST_PATH "/pg1/global/pg_control (bundle 1/0, 8KB, [PCT]) checksum [SHA1]\n"
+-                "P01 DETAIL: backup file " TEST_PATH "/pg1/PG_VERSION (bundle 1/8192, 2B, [PCT]) checksum [SHA1]\n"
++                "P00   INFO: full/incr backup cleanup\n"
++                "P00   WARN: file 'time-change' has timestamp earlier than prior backup (prior 1572799880, current 1572799879),"
++                " enabling delta checksum\n"
++                "P00 DETAIL: remove file '" TEST_PATH "/repo/backup/test1/20191103-165320F/pg_data/rm-after-prelim-cp' from backup"
++                " (missing in manifest)\n"
++                "P00   INFO: full/incr backup final copy\n"
++                "P00 DETAIL: store zero-length file " TEST_PATH "/pg1/empty\n"
++                "P01 DETAIL: backup file " TEST_PATH "/pg1/block-incr-no-resume (24KB, 52.93%) checksum [SHA1]\n"
++                "P01 DETAIL: backup file " TEST_PATH "/pg1/block-incr-grow (24KB, 70.58%) checksum [SHA1]\n"
++                "P01 DETAIL: backup file " TEST_PATH "/pg1/below-fi-limit (8KB, 76.46%) checksum [SHA1]\n"
++                "P01 DETAIL: match file from prior backup " TEST_PATH "/pg1/time-change (8KB, 82.35%) checksum [SHA1]\n"
++                "P01 DETAIL: skip file removed by database " TEST_PATH "/pg1/rm-before-final-cp\n"
++                "P01 DETAIL: skip file removed by database " TEST_PATH "/pg1/rm-bnd-before-final-cp\n"
++                "P01 DETAIL: backup file " TEST_PATH "/pg1/global/pg_control (bundle 1/0, 8KB, 99.99%) checksum [SHA1]\n"
++                "P01 DETAIL: backup file " TEST_PATH "/pg1/PG_VERSION (bundle 1/8192, 2B, 100.00%) checksum [SHA1]\n"
+                 "P00   INFO: execute non-exclusive backup stop and wait for all WAL segments to archive\n"
+                 "P00   INFO: backup stop archive = 0000000105DBF06000000001, lsn = 5dbf060/300000\n"
+                 "P00 DETAIL: wrote 'backup_label' file returned from backup stop function\n"
+                 "P00   INFO: check archive for segment(s) 0000000105DBF06000000000:0000000105DBF06000000001\n"
+                 "P00   INFO: new backup label = 20191103-165320F\n"
+-                "P00   INFO: full backup size = [SIZE], file total = 5");
++                "P00   INFO: full backup size = [SIZE], file total = 8");
+ 
+             TEST_RESULT_STR_Z(
+                 testBackupValidateP(storageRepo(), STRDEF(STORAGE_REPO_BACKUP "/latest")),
+@@ -3466,12 +3551,22 @@ testRun(void)
+                 "bundle/1/pg_data/PG_VERSION {s=2}\n"
+                 "bundle/1/pg_data/global/pg_control {s=8192}\n"
+                 "pg_data/backup_label {s=17, ts=+2}\n"
++                "pg_data/below-fi-limit {s=8195, ts=-119}\n"
+                 "pg_data/block-incr-grow.pgbi {s=24576, m=0:{0,1,2}}\n"
+                 "pg_data/block-incr-no-resume.pgbi {s=24576, m=0:{0,1,2}}\n"
++                "pg_data/time-change {s=8193, ts=-121}\n"
+                 "--------\n"
+                 "[backup:target]\n"
+                 "pg_data={\"path\":\"" TEST_PATH "/pg1\",\"type\":\"path\"}\n",
+                 "compare file list");
++
++            HRN_STORAGE_REMOVE(storagePgWrite(), "rm-before-final-cp");
++            HRN_STORAGE_REMOVE(storagePgWrite(), "time-change");
++            HRN_STORAGE_REMOVE(storagePgWrite(), "below-fi-limit");
++            HRN_STORAGE_REMOVE(storagePgWrite(), "empty");
++
++            // Replace progress reporting to reduce log churn
++            hrnLogReplaceAdd(", [0-9]{1,3}.[0-9]{1,2}%\\)", "[0-9].+%", "PCT", false);
+         }
+ 
+         // -------------------------------------------------------------------------------------------------------------------------
+@@ -3544,6 +3639,9 @@ testRun(void)
+ 
+             HRN_STORAGE_PUT(storagePgWrite(), "grow-to-block-incr", file, .timeModified = backupTimeStart);
+ 
++            // Normal file that remains the same between backups
++            HRN_STORAGE_PUT_Z(storagePgWrite(), "normal-same", "SAME", .timeModified = backupTimeStart);
++
+             // Run backup
+             hrnBackupPqScriptP(PG_VERSION_11, backupTimeStart, .walCompressType = compressTypeGz, .walTotal = 2, .walSwitch = true);
+             TEST_RESULT_VOID(hrnCmdBackup(), "backup");
+@@ -3558,6 +3656,10 @@ testRun(void)
+                 "P00 DETAIL: remove path '" TEST_PATH "/repo/backup/test1/20191103-165320F/bundle' from resumed backup\n"
+                 "P00 DETAIL: remove file '" TEST_PATH "/repo/backup/test1/20191103-165320F/pg_data/backup_label' from resumed"
+                 " backup (missing in manifest)\n"
++                "P00 DETAIL: remove file '" TEST_PATH "/repo/backup/test1/20191103-165320F/pg_data/below-fi-limit' from resumed"
++                " backup (missing in manifest)\n"
++                "P00 DETAIL: remove file '" TEST_PATH "/repo/backup/test1/20191103-165320F/pg_data/time-change' from resumed"
++                " backup (missing in manifest)\n"
+                 "P01 DETAIL: backup file " TEST_PATH "/pg1/block-incr-no-resume (24KB, [PCT]) checksum [SHA1]\n"
+                 "P00   WARN: resumed backup file pg_data/block-incr-no-resume did not have expected checksum"
+                 " ebdd38b69cd5b9f2d00d273c981e16960fbbb4f7. The file was recopied and backup will continue but this may be an issue"
+@@ -3800,7 +3902,7 @@ testRun(void)
+             // Run backup
+             hrnBackupPqScriptP(
+                 PG_VERSION_11, backupTimeStart, .walCompressType = compressTypeNone, .cipherType = cipherTypeAes256Cbc,
+-                .cipherPass = TEST_CIPHER_PASS, .walTotal = 2, .walSwitch = true);
++                .cipherPass = TEST_CIPHER_PASS, .walTotal = 2, .walSwitch = true, .fullIncrNoOp = true);
+             TEST_RESULT_VOID(hrnCmdBackup(), "backup");
+ 
+             TEST_RESULT_LOG(
+@@ -3847,6 +3949,7 @@ testRun(void)
+             hrnCfgArgRaw(argList, cfgOptPgPath, pg1Path);
+             hrnCfgArgRawZ(argList, cfgOptRepoRetentionFull, "1");
+             hrnCfgArgRawStrId(argList, cfgOptType, backupTypeFull);
++            hrnCfgArgRawBool(argList, cfgOptBackupFullIncr, true);
+             hrnCfgArgRawBool(argList, cfgOptDelta, true);
+             hrnCfgArgRawBool(argList, cfgOptRepoBundle, true);
+             hrnCfgArgRawZ(argList, cfgOptRepoBundleLimit, "8KiB");
+@@ -3884,9 +3987,7 @@ testRun(void)
+ 
+             TEST_RESULT_LOG(
+                 "P00   WARN: backup '20191108-080000F' missing manifest removed from backup.info\n"
+-                "P00   INFO: execute non-exclusive backup start: backup begins after the next regular checkpoint completes\n"
+-                "P00   INFO: backup start archive = 0000000105DC6A7000000000, lsn = 5dc6a70/0\n"
+-                "P00   INFO: check archive for segment 0000000105DC6A7000000000\n"
++                "P00   INFO: full/incr backup preliminary copy of files last modified before 2019-11-08 11:44:40\n"
+                 "P00   WARN: resumable backup 20191108-080000F of same type exists -- invalid files will be removed then the backup"
+                 " will resume\n"
+                 "P00 DETAIL: remove path '" TEST_PATH "/repo/backup/test1/20191108-080000F/bundle' from resumed backup\n"
+@@ -3894,6 +3995,13 @@ testRun(void)
+                 " backup (missing in manifest)\n"
+                 "P01 DETAIL: backup file " TEST_PATH "/pg1/block-incr-no-resume (24KB, [PCT]) checksum [SHA1]\n"
+                 "P01 DETAIL: checksum resumed file " TEST_PATH "/pg1/block-incr-grow (24KB, [PCT]) checksum [SHA1]\n"
++                "P00   INFO: execute non-exclusive backup start: backup begins after the next regular checkpoint completes\n"
++                "P00   INFO: backup start archive = 0000000105DC6A7000000000, lsn = 5dc6a70/0\n"
++                "P00   INFO: check archive for segment 0000000105DC6A7000000000\n"
++                "P00   INFO: full/incr backup cleanup\n"
++                "P00   INFO: full/incr backup final copy\n"
++                "P01 DETAIL: match file from prior backup " TEST_PATH "/pg1/block-incr-no-resume (24KB, [PCT]) checksum [SHA1]\n"
++                "P01 DETAIL: match file from prior backup " TEST_PATH "/pg1/block-incr-grow (24KB, [PCT]) checksum [SHA1]\n"
+                 "P01 DETAIL: backup file " TEST_PATH "/pg1/block-incr-wayback (16KB, [PCT]) checksum [SHA1]\n"
+                 "P01 DETAIL: backup file " TEST_PATH "/pg1/PG_VERSION (bundle 1/0, 2B, [PCT]) checksum [SHA1]\n"
+                 "P01 DETAIL: backup file " TEST_PATH "/pg1/global/pg_control (bundle 1/24, 8KB, [PCT]) checksum [SHA1]\n"
+@@ -4070,7 +4178,7 @@ testRun(void)
+                  .time = backupTimeStart + 1, .content = fileGrow});
+             hrnBackupPqScriptP(
+                 PG_VERSION_11, backupTimeStart, .walCompressType = compressTypeNone, .cipherType = cipherTypeAes256Cbc,
+-                .cipherPass = TEST_CIPHER_PASS, .walTotal = 2, .walSwitch = true);
++                .cipherPass = TEST_CIPHER_PASS, .walTotal = 2, .walSwitch = true, .fullIncrNoOp = true);
+             TEST_RESULT_VOID(hrnCmdBackup(), "backup");
+ 
+             // Make sure that global/1 grew as expected but the extra bytes were not copied
+diff --git a/test/src/module/command/manifestTest.c b/test/src/module/command/manifestTest.c
+index b07f42254..554d431bd 100644
+--- a/test/src/module/command/manifestTest.c
++++ b/test/src/module/command/manifestTest.c
+@@ -98,7 +98,7 @@ testRun(void)
+             HRN_CFG_LOAD(cfgCmdBackup, argList);
+ 
+             // Backup to repo1
+-            hrnBackupPqScriptP(PG_VERSION_95, backupTimeStart, .noArchiveCheck = true, .noWal = true);
++            hrnBackupPqScriptP(PG_VERSION_95, backupTimeStart, .noArchiveCheck = true, .noWal = true, .fullIncrNoOp = true);
+             TEST_RESULT_VOID(hrnCmdBackup(), "backup repo1");
+ 
+             // Backup to repo2
+@@ -106,8 +106,8 @@ testRun(void)
+             HRN_CFG_LOAD(cfgCmdBackup, argList);
+ 
+             hrnBackupPqScriptP(
+-                PG_VERSION_95, backupTimeStart, .noArchiveCheck = true, .noWal = true, .cipherType = cipherTypeAes256Cbc,
+-                .cipherPass = TEST_CIPHER_PASS);
++                PG_VERSION_95, backupTimeStart, .noArchiveCheck = true, .noWal = true, .fullIncrNoOp = true,
++                .cipherType = cipherTypeAes256Cbc, .cipherPass = TEST_CIPHER_PASS);
+             TEST_RESULT_VOID(hrnCmdBackup(), "backup repo2");
+         }
+ 
+diff --git a/test/src/module/info/manifestTest.c b/test/src/module/info/manifestTest.c
+index 101edcae5..d9603a140 100644
+--- a/test/src/module/info/manifestTest.c
++++ b/test/src/module/info/manifestTest.c
+@@ -468,6 +468,11 @@ testRun(void)
+                     TEST_MANIFEST_PATH_DEFAULT)),
+             "check manifest");
+ 
++        // Build full/incr manifest
++        TEST_RESULT_VOID(manifestBuildFullIncr(manifest, 1565282100, 0), "build full/incr manifest");
++        TEST_RESULT_UINT(manifestFileTotal(manifest), 1, "check file total");
++        TEST_RESULT_BOOL(manifestFileExists(manifest, STRDEF("pg_data/PG_VERSION")), true, "check for PG_VERSION");
++
+         // Remove pg_xlog and the directory that archive_status link pointed to
+         HRN_STORAGE_PATH_REMOVE(storagePgWrite, "pg_xlog", .recurse = true);
+         HRN_STORAGE_PATH_REMOVE(storageTest, "archivestatus", .recurse = true);
+@@ -848,6 +853,14 @@ testRun(void)
+                     TEST_MANIFEST_PATH_DEFAULT)),
+             "check manifest");
+ 
++        // Build full/incr manifest
++        TEST_RESULT_VOID(manifestBuildFullIncr(manifest, 1565282101, 2), "build full/incr manifest");
++        TEST_RESULT_UINT(manifestFileTotal(manifest), 2, "check file total");
++        TEST_RESULT_BOOL(manifestFileExists(manifest, STRDEF("pg_data/PG_VERSION")), true, "check for PG_VERSION");
++        TEST_RESULT_BOOL(
++            manifestFileExists(manifest, STRDEF("pg_data/pg_xlog/000000020000000000000002")), true,
++            "check for pg_xlog/000000020000000000000002");
++
+         // -------------------------------------------------------------------------------------------------------------------------
+         TEST_TITLE("error on link to pg_data");
+ 
+diff --git a/test/src/module/integration/allTest.c b/test/src/module/integration/allTest.c
+index 897a39889..d42edc8b4 100644
+--- a/test/src/module/integration/allTest.c
++++ b/test/src/module/integration/allTest.c
+@@ -1,6 +1,8 @@
+ /***********************************************************************************************************************************
+ Real Integration Test
+ ***********************************************************************************************************************************/
++#include <utime.h>
++
+ #include "common/crypto/common.h"
+ #include "config/config.h"
+ #include "info/infoBackup.h"
+@@ -18,16 +20,16 @@ Test definition
+ static HrnHostTestDefine testMatrix[] =
+ {
+     // {uncrustify_off - struct alignment}
+-    {.pg = "9.5", .repo = "repo", .tls = 1, .stg =    "s3", .enc = 0, .cmp =  "bz2", .rt = 1, .bnd = 1, .bi = 1},
+-    {.pg = "9.6", .repo = "repo", .tls = 0, .stg = "azure", .enc = 0, .cmp = "none", .rt = 2, .bnd = 1, .bi = 1},
+-    {.pg =  "10", .repo =  "pg2", .tls = 0, .stg =  "sftp", .enc = 1, .cmp =   "gz", .rt = 1, .bnd = 1, .bi = 0},
+-    {.pg =  "11", .repo = "repo", .tls = 1, .stg =   "gcs", .enc = 0, .cmp =  "zst", .rt = 2, .bnd = 0, .bi = 0},
+-    {.pg =  "12", .repo = "repo", .tls = 0, .stg =    "s3", .enc = 1, .cmp =  "lz4", .rt = 1, .bnd = 1, .bi = 1},
+-    {.pg =  "13", .repo =  "pg2", .tls = 1, .stg = "posix", .enc = 0, .cmp = "none", .rt = 1, .bnd = 0, .bi = 0},
+-    {.pg =  "14", .repo = "repo", .tls = 0, .stg =   "gcs", .enc = 0, .cmp =  "lz4", .rt = 1, .bnd = 1, .bi = 0},
+-    {.pg =  "15", .repo =  "pg2", .tls = 0, .stg = "azure", .enc = 1, .cmp = "none", .rt = 2, .bnd = 1, .bi = 1},
+-    {.pg =  "16", .repo = "repo", .tls = 0, .stg =  "sftp", .enc = 0, .cmp =  "zst", .rt = 1, .bnd = 1, .bi = 1},
+-    {.pg =  "17", .repo = "repo", .tls = 0, .stg = "posix", .enc = 0, .cmp = "none", .rt = 1, .bnd = 0, .bi = 0},
++    {.pg = "9.5", .repo = "repo", .tls = 1, .stg =    "s3", .enc = 0, .cmp =  "bz2", .rt = 1, .bnd = 1, .bi = 1, .fi = 1},
++    {.pg = "9.6", .repo = "repo", .tls = 0, .stg = "azure", .enc = 0, .cmp = "none", .rt = 2, .bnd = 1, .bi = 1, .fi = 0},
++    {.pg =  "10", .repo =  "pg2", .tls = 0, .stg =  "sftp", .enc = 1, .cmp =   "gz", .rt = 1, .bnd = 1, .bi = 0, .fi = 1},
++    {.pg =  "11", .repo = "repo", .tls = 1, .stg =   "gcs", .enc = 0, .cmp =  "zst", .rt = 2, .bnd = 0, .bi = 0, .fi = 1},
++    {.pg =  "12", .repo = "repo", .tls = 0, .stg =    "s3", .enc = 1, .cmp =  "lz4", .rt = 1, .bnd = 1, .bi = 1, .fi = 0},
++    {.pg =  "13", .repo =  "pg2", .tls = 1, .stg = "posix", .enc = 0, .cmp = "none", .rt = 1, .bnd = 0, .bi = 0, .fi = 0},
++    {.pg =  "14", .repo = "repo", .tls = 0, .stg =   "gcs", .enc = 0, .cmp =  "lz4", .rt = 1, .bnd = 1, .bi = 0, .fi = 1},
++    {.pg =  "15", .repo =  "pg2", .tls = 0, .stg = "azure", .enc = 1, .cmp = "none", .rt = 2, .bnd = 1, .bi = 1, .fi = 0},
++    {.pg =  "16", .repo = "repo", .tls = 0, .stg =  "sftp", .enc = 0, .cmp =  "zst", .rt = 1, .bnd = 1, .bi = 1, .fi = 1},
++    {.pg =  "17", .repo = "repo", .tls = 0, .stg = "posix", .enc = 0, .cmp = "none", .rt = 1, .bnd = 0, .bi = 0, .fi = 0},
+     // {uncrustify_on}
+ };
+ 
+@@ -87,6 +89,23 @@ testRun(void)
+         const unsigned int ts1Oid = pckReadU32P(hrnHostSqlValue(pg1, "select oid from pg_tablespace where spcname = 'ts1'"));
+         TEST_LOG_FMT("ts1 tablespace oid = %u", ts1Oid);
+ 
++        // When full/incr is enabled, set some modified timestamps in the past so full/incr will find some files
++        if (hrnHostFullIncr())
++        {
++            const StringList *const fileList = storageListP(hrnHostPgStorage(pg1), STRDEF("base/1"));
++            const time_t modified = time(NULL) - SEC_PER_DAY * 2;
++
++            for (unsigned int fileIdx = 0; fileIdx < strLstSize(fileList); fileIdx++)
++            {
++                const char *const pathFull = strZ(
++                    storagePathP(hrnHostPgStorage(pg1), strNewFmt("base/1/%s", strZ(strLstGet(fileList, fileIdx)))));
++
++                THROW_ON_SYS_ERROR_FMT(
++                    utime(pathFull, &((struct utimbuf){.actime = modified, .modtime = modified})) == -1, FileInfoError,
++                    "unable to set time for '%s'", pathFull);
++            }
++        }
++
+         // Get the tablespace path to use for this version. We could use our internally stored catalog number but during the beta
+         // period this number will be changing and would need to be updated. Make this less fragile by just reading the path.
+         const String *const tablespacePath = strLstGet(
+diff --git a/test/src/module/postgres/interfaceTest.c b/test/src/module/postgres/interfaceTest.c
+index 2a7bc7ecd..7aa99d4d2 100644
+--- a/test/src/module/postgres/interfaceTest.c
++++ b/test/src/module/postgres/interfaceTest.c
+@@ -110,8 +110,8 @@ testRun(void)
+ 
+         // -------------------------------------------------------------------------------------------------------------------------
+         HRN_PG_CONTROL_PUT(
+-            storageTest, PG_VERSION_11, .systemId = 0xFACEFACE, .checkpoint = 0xEEFFEEFFAABBAABB, .timeline = 47,
+-            .walSegmentSize = 1024 * 1024);
++            storageTest, PG_VERSION_11, .systemId = 0xFACEFACE, .checkpoint = 0xEEFFEEFFAABBAABB, .checkpointTime = 555,
++            .timeline = 47, .walSegmentSize = 1024 * 1024);
+ 
+         PgControl info = {0};
+         TEST_ASSIGN(info, pgControlFromFile(storageTest, NULL), "get control info v11");
+@@ -119,6 +119,7 @@ testRun(void)
+         TEST_RESULT_UINT(info.version, PG_VERSION_11, "   check version");
+         TEST_RESULT_UINT(info.catalogVersion, 201809051, "   check catalog version");
+         TEST_RESULT_UINT(info.checkpoint, 0xEEFFEEFFAABBAABB, "check checkpoint");
++        TEST_RESULT_INT(info.checkpointTime, 555, "check checkpoint time");
+         TEST_RESULT_UINT(info.timeline, 47, "check timeline");
+ 
+         // -------------------------------------------------------------------------------------------------------------------------
+-- 
+2.34.1
+

@@ -1,0 +1,274 @@
+From dd244257ed676fa8ffc3ed8708f9ccc2a4e60a7a Mon Sep 17 00:00:00 2001
+From: David Steele <david@pgmasters.net>
+Date: Tue, 26 Nov 2024 11:03:27 -0500
+Subject: [PATCH 8/9] Use lz4 for protocol compression.
+
+lz4 provides much better compression speed and gives similar compression ratios to gz when used at low levels (the gz default was 3).
+---
+ doc/xml/release/2025/2.55.0.xml    | 11 +++++++++++
+ src/build/config/config.yaml       |  4 ++--
+ src/config/parse.auto.c.inc        | 26 +++++++++++++-------------
+ src/storage/remote/read.c          |  4 ++--
+ src/storage/remote/write.c         |  7 +++++--
+ test/src/module/command/helpTest.c |  2 +-
+ test/src/module/config/parseTest.c | 20 ++++++++++++++++++++
+ 7 files changed, 54 insertions(+), 20 deletions(-)
+
+diff --git a/doc/xml/release/2025/2.55.0.xml b/doc/xml/release/2025/2.55.0.xml
+index f58c108a7..d3778a850 100644
+--- a/doc/xml/release/2025/2.55.0.xml
++++ b/doc/xml/release/2025/2.55.0.xml
+@@ -17,6 +17,17 @@
+         </release-bug-list>
+ 
+         <release-improvement-list>
++            <release-item>
++                <github-pull-request id="2488"/>
++
++                <release-item-contributor-list>
++                    <release-item-contributor id="david.steele"/>
++                    <release-item-reviewer id="stefan.fercot"/>
++                </release-item-contributor-list>
++
++                <p>Use <proper>lz4</proper> for protocol compression.</p>
++            </release-item>
++
+             <release-item>
+                 <github-pull-request id="2472"/>
+ 
+diff --git a/src/build/config/config.yaml b/src/build/config/config.yaml
+index fe0723280..2196168e9 100644
+--- a/src/build/config/config.yaml
++++ b/src/build/config/config.yaml
+@@ -767,8 +767,8 @@ option:
+   compress-level-network:
+     section: global
+     type: integer
+-    default: 3
+-    allow-range: [0, 9]
++    default: 1
++    allow-range: [-5, 12]
+     command:
+       annotate: {}
+       archive-get: {}
+diff --git a/src/config/parse.auto.c.inc b/src/config/parse.auto.c.inc
+index 244ece749..a77a5ad0d 100644
+--- a/src/config/parse.auto.c.inc
++++ b/src/config/parse.auto.c.inc
+@@ -11,6 +11,7 @@ Rule Strings
+ 
+ static const StringPubConst parseRuleValueStr[] =
+ {
++    PARSE_RULE_STRPUB("-5"),                                                                                              // val/str
+     PARSE_RULE_STRPUB("/tmp/pgbackrest"),                                                                                 // val/str
+     PARSE_RULE_STRPUB("/var/lib/pgbackrest"),                                                                             // val/str
+     PARSE_RULE_STRPUB("/var/log/pgbackrest"),                                                                             // val/str
+@@ -21,6 +22,7 @@ static const StringPubConst parseRuleValueStr[] =
+     PARSE_RULE_STRPUB("1"),                                                                                               // val/str
+     PARSE_RULE_STRPUB("100ms"),                                                                                           // val/str
+     PARSE_RULE_STRPUB("1024"),                                                                                            // val/str
++    PARSE_RULE_STRPUB("12"),                                                                                              // val/str
+     PARSE_RULE_STRPUB("128KiB"),                                                                                          // val/str
+     PARSE_RULE_STRPUB("128MiB"),                                                                                          // val/str
+     PARSE_RULE_STRPUB("15m"),                                                                                             // val/str
+@@ -41,7 +43,6 @@ static const StringPubConst parseRuleValueStr[] =
+     PARSE_RULE_STRPUB("256"),                                                                                             // val/str
+     PARSE_RULE_STRPUB("256KiB"),                                                                                          // val/str
+     PARSE_RULE_STRPUB("2MiB"),                                                                                            // val/str
+-    PARSE_RULE_STRPUB("3"),                                                                                               // val/str
+     PARSE_RULE_STRPUB("30m"),                                                                                             // val/str
+     PARSE_RULE_STRPUB("31m"),                                                                                             // val/str
+     PARSE_RULE_STRPUB("32"),                                                                                              // val/str
+@@ -59,7 +60,6 @@ static const StringPubConst parseRuleValueStr[] =
+     PARSE_RULE_STRPUB("8432"),                                                                                            // val/str
+     PARSE_RULE_STRPUB("8KiB"),                                                                                            // val/str
+     PARSE_RULE_STRPUB("8MiB"),                                                                                            // val/str
+-    PARSE_RULE_STRPUB("9"),                                                                                               // val/str
+     PARSE_RULE_STRPUB("900"),                                                                                             // val/str
+     PARSE_RULE_STRPUB("999"),                                                                                             // val/str
+     PARSE_RULE_STRPUB("9999999"),                                                                                         // val/str
+@@ -135,6 +135,7 @@ static const StringPubConst parseRuleValueStr[] =
+ 
+ typedef enum
+ {
++    parseRuleValStrQT_DS_5_QT,                                                                                       // val/str/enum
+     parseRuleValStrQT_FS_tmp_FS_pgbackrest_QT,                                                                       // val/str/enum
+     parseRuleValStrQT_FS_var_FS_lib_FS_pgbackrest_QT,                                                                // val/str/enum
+     parseRuleValStrQT_FS_var_FS_log_FS_pgbackrest_QT,                                                                // val/str/enum
+@@ -145,6 +146,7 @@ typedef enum
+     parseRuleValStrQT_1_QT,                                                                                          // val/str/enum
+     parseRuleValStrQT_100ms_QT,                                                                                      // val/str/enum
+     parseRuleValStrQT_1024_QT,                                                                                       // val/str/enum
++    parseRuleValStrQT_12_QT,                                                                                         // val/str/enum
+     parseRuleValStrQT_128KiB_QT,                                                                                     // val/str/enum
+     parseRuleValStrQT_128MiB_QT,                                                                                     // val/str/enum
+     parseRuleValStrQT_15m_QT,                                                                                        // val/str/enum
+@@ -165,7 +167,6 @@ typedef enum
+     parseRuleValStrQT_256_QT,                                                                                        // val/str/enum
+     parseRuleValStrQT_256KiB_QT,                                                                                     // val/str/enum
+     parseRuleValStrQT_2MiB_QT,                                                                                       // val/str/enum
+-    parseRuleValStrQT_3_QT,                                                                                          // val/str/enum
+     parseRuleValStrQT_30m_QT,                                                                                        // val/str/enum
+     parseRuleValStrQT_31m_QT,                                                                                        // val/str/enum
+     parseRuleValStrQT_32_QT,                                                                                         // val/str/enum
+@@ -183,7 +184,6 @@ typedef enum
+     parseRuleValStrQT_8432_QT,                                                                                       // val/str/enum
+     parseRuleValStrQT_8KiB_QT,                                                                                       // val/str/enum
+     parseRuleValStrQT_8MiB_QT,                                                                                       // val/str/enum
+-    parseRuleValStrQT_9_QT,                                                                                          // val/str/enum
+     parseRuleValStrQT_900_QT,                                                                                        // val/str/enum
+     parseRuleValStrQT_999_QT,                                                                                        // val/str/enum
+     parseRuleValStrQT_9999999_QT,                                                                                    // val/str/enum
+@@ -458,11 +458,11 @@ Rule Ints
+ 
+ static const int parseRuleValueInt[] =
+ {
++    -5,                                                                                                                   // val/int
+     0,                                                                                                                    // val/int
+     1,                                                                                                                    // val/int
+     2,                                                                                                                    // val/int
+-    3,                                                                                                                    // val/int
+-    9,                                                                                                                    // val/int
++    12,                                                                                                                   // val/int
+     22,                                                                                                                   // val/int
+     32,                                                                                                                   // val/int
+     256,                                                                                                                  // val/int
+@@ -480,11 +480,11 @@ static const int parseRuleValueInt[] =
+ 
+ static const uint8_t parseRuleValueIntStrMap[] =
+ {
++    parseRuleValStrQT_DS_5_QT,                                                                                     // val/int/strmap
+     parseRuleValStrQT_0_QT,                                                                                        // val/int/strmap
+     parseRuleValStrQT_1_QT,                                                                                        // val/int/strmap
+     parseRuleValStrQT_2_QT,                                                                                        // val/int/strmap
+-    parseRuleValStrQT_3_QT,                                                                                        // val/int/strmap
+-    parseRuleValStrQT_9_QT,                                                                                        // val/int/strmap
++    parseRuleValStrQT_12_QT,                                                                                       // val/int/strmap
+     parseRuleValStrQT_22_QT,                                                                                       // val/int/strmap
+     parseRuleValStrQT_32_QT,                                                                                       // val/int/strmap
+     parseRuleValStrQT_256_QT,                                                                                      // val/int/strmap
+@@ -502,11 +502,11 @@ static const uint8_t parseRuleValueIntStrMap[] =
+ 
+ typedef enum
+ {
++    parseRuleValIntDS_5,                                                                                             // val/int/enum
+     parseRuleValInt0,                                                                                                // val/int/enum
+     parseRuleValInt1,                                                                                                // val/int/enum
+     parseRuleValInt2,                                                                                                // val/int/enum
+-    parseRuleValInt3,                                                                                                // val/int/enum
+-    parseRuleValInt9,                                                                                                // val/int/enum
++    parseRuleValInt12,                                                                                               // val/int/enum
+     parseRuleValInt22,                                                                                               // val/int/enum
+     parseRuleValInt32,                                                                                               // val/int/enum
+     parseRuleValInt256,                                                                                              // val/int/enum
+@@ -1839,13 +1839,13 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
+             (                                                                                          // opt/compress-level-network
+                 PARSE_RULE_OPTIONAL_ALLOW_RANGE                                                        // opt/compress-level-network
+                 (                                                                                      // opt/compress-level-network
+-                    PARSE_RULE_VAL_INT(0),                                                             // opt/compress-level-network
+-                    PARSE_RULE_VAL_INT(9),                                                             // opt/compress-level-network
++                    PARSE_RULE_VAL_INT(DS_5),                                                          // opt/compress-level-network
++                    PARSE_RULE_VAL_INT(12),                                                            // opt/compress-level-network
+                 ),                                                                                     // opt/compress-level-network
+                                                                                                        // opt/compress-level-network
+                 PARSE_RULE_OPTIONAL_DEFAULT                                                            // opt/compress-level-network
+                 (                                                                                      // opt/compress-level-network
+-                    PARSE_RULE_VAL_INT(3),                                                             // opt/compress-level-network
++                    PARSE_RULE_VAL_INT(1),                                                             // opt/compress-level-network
+                 ),                                                                                     // opt/compress-level-network
+             ),                                                                                         // opt/compress-level-network
+         ),                                                                                             // opt/compress-level-network
+diff --git a/src/storage/remote/read.c b/src/storage/remote/read.c
+index f36d6a985..e4e5426c4 100644
+--- a/src/storage/remote/read.c
++++ b/src/storage/remote/read.c
+@@ -196,7 +196,7 @@ storageReadRemoteOpen(THIS_VOID)
+         {
+             ioFilterGroupAdd(
+                 ioReadFilterGroup(storageReadIo(this->read)),
+-                compressFilterP(compressTypeGz, (int)this->interface.compressLevel, .raw = true));
++                compressFilterP(compressTypeLz4, (int)this->interface.compressLevel, .raw = true));
+         }
+ 
+         PackWrite *const param = protocolPackNew();
+@@ -225,7 +225,7 @@ storageReadRemoteOpen(THIS_VOID)
+ 
+             // If the file is compressible add decompression filter locally
+             if (this->interface.compressible)
+-                ioFilterGroupAdd(ioReadFilterGroup(storageReadIo(this->read)), decompressFilterP(compressTypeGz, .raw = true));
++                ioFilterGroupAdd(ioReadFilterGroup(storageReadIo(this->read)), decompressFilterP(compressTypeLz4, .raw = true));
+ 
+             // Read the first block or eof
+             storageReadRemoteInternal(this, packRead);
+diff --git a/src/storage/remote/write.c b/src/storage/remote/write.c
+index 6d740eb54..743f7c47b 100644
+--- a/src/storage/remote/write.c
++++ b/src/storage/remote/write.c
+@@ -55,7 +55,10 @@ storageWriteRemoteOpen(THIS_VOID)
+     {
+         // If the file is compressible add decompression filter on the remote
+         if (this->interface.compressible)
+-            ioFilterGroupInsert(ioWriteFilterGroup(storageWriteIo(this->write)), 0, decompressFilterP(compressTypeGz));
++        {
++            ioFilterGroupInsert(
++                ioWriteFilterGroup(storageWriteIo(this->write)), 0, decompressFilterP(compressTypeLz4, .raw = true));
++        }
+ 
+         PackWrite *const param = protocolPackNew();
+ 
+@@ -81,7 +84,7 @@ storageWriteRemoteOpen(THIS_VOID)
+         {
+             ioFilterGroupAdd(
+                 ioWriteFilterGroup(storageWriteIo(this->write)),
+-                compressFilterP(compressTypeGz, (int)this->interface.compressLevel));
++                compressFilterP(compressTypeLz4, (int)this->interface.compressLevel, .raw = true));
+         }
+     }
+     MEM_CONTEXT_TEMP_END();
+diff --git a/test/src/module/command/helpTest.c b/test/src/module/command/helpTest.c
+index d88c7a3a3..e549b45b1 100644
+--- a/test/src/module/command/helpTest.c
++++ b/test/src/module/command/helpTest.c
+@@ -260,7 +260,7 @@ testRun(void)
+             "  --cmd                               pgBackRest command\n"
+             "                                      [default=/path/to/pgbackrest]\n"
+             "  --cmd-ssh                           SSH client command [default=ssh]\n"
+-            "  --compress-level-network            network compression level [default=3]\n"
++            "  --compress-level-network            network compression level [default=1]\n"
+             "  --config                            pgBackRest configuration file\n"
+             "                                      [default=/etc/pgbackrest/pgbackrest.conf]\n"
+             "  --config-include-path               path to additional pgBackRest\n"
+diff --git a/test/src/module/config/parseTest.c b/test/src/module/config/parseTest.c
+index c726d43be..ccecea524 100644
+--- a/test/src/module/config/parseTest.c
++++ b/test/src/module/config/parseTest.c
+@@ -1373,6 +1373,26 @@ testRun(void)
+             "'0' is out of range for 'process-max' option\n"
+             "HINT: allowed range is 1 to 999 inclusive");
+ 
++        argList = strLstNew();
++        strLstAddZ(argList, TEST_BACKREST_EXE);
++        hrnCfgArgRawZ(argList, cfgOptPgPath, "/path/to/db");
++        hrnCfgArgRawZ(argList, cfgOptStanza, "db");
++        hrnCfgArgRawZ(argList, cfgOptCompressLevelNetwork, "-6");
++        strLstAddZ(argList, TEST_COMMAND_BACKUP);
++        TEST_ERROR(
++            cfgParseP(storageTest, strLstSize(argList), strLstPtr(argList), .noResetLogLevel = true), OptionInvalidValueError,
++            "'-6' is out of range for 'compress-level-network' option\n"
++            "HINT: allowed range is -5 to 12 inclusive");
++
++        argList = strLstNew();
++        strLstAddZ(argList, TEST_BACKREST_EXE);
++        hrnCfgArgRawZ(argList, cfgOptPgPath, "/path/to/db");
++        hrnCfgArgRawZ(argList, cfgOptStanza, "db");
++        hrnCfgArgRawZ(argList, cfgOptCompressLevelNetwork, "-5");
++        strLstAddZ(argList, TEST_COMMAND_BACKUP);
++        TEST_RESULT_VOID(cfgParseP(storageTest, strLstSize(argList), strLstPtr(argList), .noResetLogLevel = true), "load config");
++        TEST_RESULT_INT(cfgOptionInt(cfgOptCompressLevelNetwork), -5, "compress level is set");
++
+         argList = strLstNew();
+         strLstAddZ(argList, TEST_BACKREST_EXE);
+         hrnCfgArgRawZ(argList, cfgOptPgPath, "/path/to/db");
+-- 
+2.34.1
+

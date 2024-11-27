@@ -1,0 +1,55 @@
+From e7038a1a05b412b8cd497e13ab6137eb45d0dbc7 Mon Sep 17 00:00:00 2001
+From: David Steele <david@pgbackrest.org>
+Date: Fri, 15 Nov 2024 09:44:15 -0500
+Subject: [PATCH 3/9] Add wait for async archive log exists check in
+ integration test.
+
+They may be a small delay before the log exists, especially on slower platforms. Add a wait so the test does not fail in this case.
+---
+ test/src/common/harnessStorage.c      | 2 +-
+ test/src/common/harnessStorage.h      | 1 +
+ test/src/module/integration/allTest.c | 3 ++-
+ 3 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/test/src/common/harnessStorage.c b/test/src/common/harnessStorage.c
+index 8f2515734..c55885b29 100644
+--- a/test/src/common/harnessStorage.c
++++ b/test/src/common/harnessStorage.c
+@@ -111,7 +111,7 @@ testStorageExists(const Storage *const storage, const char *const file, const Te
+     printf("file exists '%s'", strZ(fileFull));
+     hrnTestResultComment(param.comment);
+ 
+-    hrnTestResultBool(storageExistsP(storage, fileFull), true);
++    hrnTestResultBool(storageExistsP(storage, fileFull, .timeout = param.timeout), true);
+ 
+     if (param.remove)
+         storageRemoveP(storage, fileFull, .errorOnMissing = true);
+diff --git a/test/src/common/harnessStorage.h b/test/src/common/harnessStorage.h
+index 37b132c7d..29188d9cd 100644
+--- a/test/src/common/harnessStorage.h
++++ b/test/src/common/harnessStorage.h
+@@ -46,6 +46,7 @@ typedef struct TestStorageExistsParam
+     VAR_PARAM_HEADER;
+     bool remove;                                                    // Remove file after testing?
+     const char *comment;                                            // Comment
++    TimeMSec timeout;                                               // Wait for file to exist
+ } TestStorageExistsParam;
+ 
+ #define TEST_STORAGE_EXISTS(storage, file, ...)                                                                                    \
+diff --git a/test/src/module/integration/allTest.c b/test/src/module/integration/allTest.c
+index 185d86bc9..897a39889 100644
+--- a/test/src/module/integration/allTest.c
++++ b/test/src/module/integration/allTest.c
+@@ -223,7 +223,8 @@ testRun(void)
+         HRN_HOST_WAL_SWITCH(pg1);
+ 
+         TEST_STORAGE_EXISTS(
+-            hrnHostDataStorage(pg1), zNewFmt("%s/" HRN_STANZA "-archive-push-async.log", strZ(hrnHostLogPath(pg1))));
++            hrnHostDataStorage(pg1), zNewFmt("%s/" HRN_STANZA "-archive-push-async.log", strZ(hrnHostLogPath(pg1))),
++            .timeout = 5000);
+ 
+         // -------------------------------------------------------------------------------------------------------------------------
+         TEST_TITLE("setup time target");
+-- 
+2.34.1
+

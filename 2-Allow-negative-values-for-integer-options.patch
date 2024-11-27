@@ -1,0 +1,128 @@
+From d5b76c8ca3e1f62270c6fa67bf379ac43af23c2b Mon Sep 17 00:00:00 2001
+From: David Steele <david@pgbackrest.org>
+Date: Wed, 13 Nov 2024 17:48:14 -0500
+Subject: [PATCH 2/9] Allow negative values for integer options.
+
+This mostly worked but there was a rendering issue that prevented compilation.
+---
+ src/build/config/render.c          |  4 ++--
+ test/src/module/build/configTest.c | 20 ++++++++++----------
+ 2 files changed, 12 insertions(+), 12 deletions(-)
+
+diff --git a/src/build/config/render.c b/src/build/config/render.c
+index a580535b5..2cb752d85 100644
+--- a/src/build/config/render.c
++++ b/src/build/config/render.c
+@@ -383,7 +383,7 @@ bldCfgRenderScalar(const String *const scalar, const String *const optType)
+         return strNewFmt("PARSE_RULE_VAL_BOOL_%s", strEqZ(scalar, "true") ? "TRUE" : "FALSE");
+ 
+     if (strEq(optType, OPT_TYPE_INTEGER_STR))
+-        return strNewFmt("PARSE_RULE_VAL_INT(%s)", strZ(scalar));
++        return strNewFmt("PARSE_RULE_VAL_INT(%s)", strZ(bldCfgRenderEnumStr(scalar)));
+ 
+     if (strEq(optType, OPT_TYPE_SIZE_STR))
+         return strNewFmt("PARSE_RULE_VAL_SIZE(%s)", strZ(scalar));
+@@ -686,7 +686,7 @@ bldCfgRenderValueRender(
+         bldCfgRenderLf(resultEnum, ruleValIdx != 0);
+         strCatFmt(resultEnum, "    parseRuleVal%s", abbr);
+ 
+-        if (strEq(optType, OPT_TYPE_STRING_STR))
++        if (strEq(optType, OPT_TYPE_STRING_STR) || strEq(optType, OPT_TYPE_INTEGER_STR))
+             strCatFmt(resultEnum, "%s,", strZ(bldCfgRenderEnumStr(strLstGet(ruleValList, ruleValIdx))));
+         else
+             strCatFmt(resultEnum, "%s,", strZ(bldEnum("", strLstGet(ruleValList, ruleValIdx))));
+diff --git a/test/src/module/build/configTest.c b/test/src/module/build/configTest.c
+index db1517560..8bf930312 100644
+--- a/test/src/module/build/configTest.c
++++ b/test/src/module/build/configTest.c
+@@ -316,7 +316,7 @@ testRun(void)
+             "    section: global\n"
+             "    type: integer\n"
+             "    required: false\n"
+-            "    allow-range: [0, 9]\n"
++            "    allow-range: [-1, 9]\n"
+             "    command: compress-type\n"
+             "    depend: compress-type\n"
+             "\n"
+@@ -602,8 +602,8 @@ testRun(void)
+             "\n"
+             "static const StringPubConst parseRuleValueStr[] =\n"
+             "{\n"
++            "    PARSE_RULE_STRPUB(\"-1\"),\n"
+             "    PARSE_RULE_STRPUB(\"/include\"),\n"
+-            "    PARSE_RULE_STRPUB(\"0\"),\n"
+             "    PARSE_RULE_STRPUB(\"100ms\"),\n"
+             "    PARSE_RULE_STRPUB(\"10s\"),\n"
+             "    PARSE_RULE_STRPUB(\"16KiB\"),\n"
+@@ -628,8 +628,8 @@ testRun(void)
+             "\n"
+             "typedef enum\n"
+             "{\n"
++            "    parseRuleValStrQT_DS_1_QT,\n"
+             "    parseRuleValStrQT_FS_include_QT,\n"
+-            "    parseRuleValStrQT_0_QT,\n"
+             "    parseRuleValStrQT_100ms_QT,\n"
+             "    parseRuleValStrQT_10s_QT,\n"
+             "    parseRuleValStrQT_16KiB_QT,\n"
+@@ -703,19 +703,19 @@ testRun(void)
+             "\n"
+             "static const int parseRuleValueInt[] =\n"
+             "{\n"
+-            "    0,\n"
++            "    -1,\n"
+             "    9,\n"
+             "};\n"
+             "\n"
+             "static const uint8_t parseRuleValueIntStrMap[] =\n"
+             "{\n"
+-            "    parseRuleValStrQT_0_QT,\n"
++            "    parseRuleValStrQT_DS_1_QT,\n"
+             "    parseRuleValStrQT_9_QT,\n"
+             "};\n"
+             "\n"
+             "typedef enum\n"
+             "{\n"
+-            "    parseRuleValInt0,\n"
++            "    parseRuleValIntDS_1,\n"
+             "    parseRuleValInt9,\n"
+             "} ParseRuleValueInt;\n"
+             "\n"
+@@ -1027,7 +1027,7 @@ testRun(void)
+             "\n"
+             "                PARSE_RULE_OPTIONAL_ALLOW_RANGE\n"
+             "                (\n"
+-            "                    PARSE_RULE_VAL_INT(0),\n"
++            "                    PARSE_RULE_VAL_INT(DS_1),\n"
+             "                    PARSE_RULE_VAL_INT(9),\n"
+             "                ),\n"
+             "            ),\n"
+@@ -1036,7 +1036,7 @@ testRun(void)
+             "            (\n"
+             "                PARSE_RULE_OPTIONAL_ALLOW_RANGE\n"
+             "                (\n"
+-            "                    PARSE_RULE_VAL_INT(0),\n"
++            "                    PARSE_RULE_VAL_INT(DS_1),\n"
+             "                    PARSE_RULE_VAL_INT(9),\n"
+             "                ),\n"
+             "            ),\n"
+@@ -1091,7 +1091,7 @@ testRun(void)
+             "\n"
+             "                PARSE_RULE_OPTIONAL_ALLOW_RANGE\n"
+             "                (\n"
+-            "                    PARSE_RULE_VAL_INT(0),\n"
++            "                    PARSE_RULE_VAL_INT(DS_1),\n"
+             "                    PARSE_RULE_VAL_INT(9),\n"
+             "                ),\n"
+             "            ),\n"
+@@ -1107,7 +1107,7 @@ testRun(void)
+             "\n"
+             "                PARSE_RULE_OPTIONAL_ALLOW_RANGE\n"
+             "                (\n"
+-            "                    PARSE_RULE_VAL_INT(0),\n"
++            "                    PARSE_RULE_VAL_INT(DS_1),\n"
+             "                    PARSE_RULE_VAL_INT(9),\n"
+             "                ),\n"
+             "            ),\n"
+-- 
+2.34.1
+

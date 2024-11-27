@@ -1,0 +1,174 @@
+From b3ac5dd42a87d32874552e04232632870411dbe0 Mon Sep 17 00:00:00 2001
+From: David Steele <david@pgbackrest.org>
+Date: Mon, 18 Nov 2024 10:58:00 -0500
+Subject: [PATCH 4/9] Enable missing-variable-declarations compiler warning.
+
+Warn if a global variable is defined without a previous declaration. Use this option to detect global variables that do not have a matching extern declaration in a header file.
+---
+ meson.build                      |  3 +++
+ src/storage/gcs/storage.c        |  2 +-
+ test/src/common/harnessLibSsh2.c | 10 +++++-----
+ test/src/common/harnessLog.c     |  8 ++++----
+ test/src/common/harnessServer.c  |  2 +-
+ test/src/common/harnessTest.c    |  2 +-
+ test/src/test.c                  |  6 ++++++
+ 7 files changed, 21 insertions(+), 12 deletions(-)
+
+diff --git a/meson.build b/meson.build
+index 4e9e242b2..0c58edf42 100644
+--- a/meson.build
++++ b/meson.build
+@@ -70,6 +70,9 @@ warning_enable = [
+     # Warn if a global function is defined without a previous prototype declaration
+     '-Wmissing-prototypes',
+ 
++    # Warn if a global variable is defined without a previous declaration
++    '-Wmissing-variable-declarations',
++
+     # Warn about anything that depends on the “size of” a function type or of void
+     '-Wpointer-arith',
+ 
+diff --git a/src/storage/gcs/storage.c b/src/storage/gcs/storage.c
+index dd8d5505f..34fa7bae2 100644
+--- a/src/storage/gcs/storage.c
++++ b/src/storage/gcs/storage.c
+@@ -48,7 +48,7 @@ STRING_EXTERN(GCS_QUERY_NAME_STR,                                   GCS_QUERY_NA
+ STRING_STATIC(GCS_QUERY_PAGE_TOKEN_STR,                             "pageToken");
+ STRING_STATIC(GCS_QUERY_PREFIX_STR,                                 "prefix");
+ STRING_EXTERN(GCS_QUERY_UPLOAD_ID_STR,                              GCS_QUERY_UPLOAD_ID);
+-STRING_EXTERN(GCS_QUERY_VERSIONS_STR,                               "versions");
++STRING_STATIC(GCS_QUERY_VERSIONS_STR,                               "versions");
+ 
+ /***********************************************************************************************************************************
+ JSON tokens
+diff --git a/test/src/common/harnessLibSsh2.c b/test/src/common/harnessLibSsh2.c
+index 901d48caf..c3bac2dbf 100644
+--- a/test/src/common/harnessLibSsh2.c
++++ b/test/src/common/harnessLibSsh2.c
+@@ -23,14 +23,14 @@ libssh2 shim error prefix
+ /***********************************************************************************************************************************
+ Script that defines how shim functions operate
+ ***********************************************************************************************************************************/
+-HrnLibSsh2 hrnLibSsh2Script[1024];
+-bool hrnLibSsh2ScriptDone = true;
+-unsigned int hrnLibSsh2ScriptIdx;
++static HrnLibSsh2 hrnLibSsh2Script[1024];
++static bool hrnLibSsh2ScriptDone = true;
++static unsigned int hrnLibSsh2ScriptIdx;
+ 
+ // If there is a script failure change the behavior of cleanup functions to return immediately so the real error will be reported
+ // rather than a bogus scripting error during cleanup
+-bool hrnLibSsh2ScriptFail;
+-char hrnLibSsh2ScriptError[4096];
++static bool hrnLibSsh2ScriptFail;
++static char hrnLibSsh2ScriptError[4096];
+ 
+ /***********************************************************************************************************************************
+ Set libssh2 script
+diff --git a/test/src/common/harnessLog.c b/test/src/common/harnessLog.c
+index adbc4d0e8..c83878601 100644
+--- a/test/src/common/harnessLog.c
++++ b/test/src/common/harnessLog.c
+@@ -26,9 +26,9 @@ Include shimmed C modules
+ /***********************************************************************************************************************************
+ Log settings for testing
+ ***********************************************************************************************************************************/
+-LogLevel logLevelTest = logLevelInfo;
+-LogLevel logLevelTestDefault = logLevelOff;
+-bool logDryRunTest = false;
++static LogLevel logLevelTest = logLevelInfo;
++static LogLevel logLevelTestDefault = logLevelOff;
++static bool logDryRunTest = false;
+ 
+ /***********************************************************************************************************************************
+ Name of file where logs are stored for testing
+@@ -38,7 +38,7 @@ static char logFile[1024];
+ /***********************************************************************************************************************************
+ Buffer where log results are loaded for comparison purposes
+ ***********************************************************************************************************************************/
+-char harnessLogBuffer[256 * 1024];
++static char harnessLogBuffer[256 * 1024];
+ 
+ /***********************************************************************************************************************************
+ Open a log file -- centralized here for error handling
+diff --git a/test/src/common/harnessServer.c b/test/src/common/harnessServer.c
+index 71b74a455..6c23ecd5d 100644
+--- a/test/src/common/harnessServer.c
++++ b/test/src/common/harnessServer.c
+@@ -47,7 +47,7 @@ Constants
+ /***********************************************************************************************************************************
+ Local data
+ ***********************************************************************************************************************************/
+-struct HrnServerLocal
++static struct HrnServerLocal
+ {
+     unsigned int portOffsetNext;                                    // Next server port offset to be returned
+ } hrnServerLocal;
+diff --git a/test/src/common/harnessTest.c b/test/src/common/harnessTest.c
+index 718ae718e..5d11ef127 100644
+--- a/test/src/common/harnessTest.c
++++ b/test/src/common/harnessTest.c
+@@ -275,7 +275,7 @@ hrnFileWrite(const char *fileName, const unsigned char *buffer, size_t bufferSiz
+ }
+ 
+ /**********************************************************************************************************************************/
+-char harnessDiffBuffer[256 * 1024];
++static char harnessDiffBuffer[256 * 1024];
+ 
+ const char *
+ hrnDiff(const char *expected, const char *actual)
+diff --git a/test/src/test.c b/test/src/test.c
+index 3c70b9028..c0fb8d3e8 100644
+--- a/test/src/test.c
++++ b/test/src/test.c
+@@ -49,6 +49,7 @@ The test code is included directly so it can freely interact with the included C
+ #define TEST_PROJECT_EXE                                            "{[C_TEST_PROJECT_EXE]}"
+ 
+ #ifdef HRN_FEATURE_STRING
++STRING_DECLARE(TEST_PROJECT_EXE_STR);
+ STRING_EXTERN(TEST_PROJECT_EXE_STR, TEST_PROJECT_EXE);
+ #endif
+ 
+@@ -56,6 +57,7 @@ STRING_EXTERN(TEST_PROJECT_EXE_STR, TEST_PROJECT_EXE);
+ #define TEST_PATH                                                   "{[C_TEST_PATH]}"
+ 
+ #ifdef HRN_FEATURE_STRING
++STRING_DECLARE(TEST_PATH_STR);
+ STRING_EXTERN(TEST_PATH_STR, TEST_PATH);
+ #endif
+ 
+@@ -63,6 +65,7 @@ STRING_EXTERN(TEST_PATH_STR, TEST_PATH);
+ #define HRN_PATH_REPO                                               "{[C_HRN_PATH_REPO]}"
+ 
+ #ifdef HRN_FEATURE_STRING
++STRING_DECLARE(HRN_PATH_REPO_STR);
+ STRING_EXTERN(HRN_PATH_REPO_STR, HRN_PATH_REPO);
+ #endif
+ 
+@@ -70,6 +73,7 @@ STRING_EXTERN(HRN_PATH_REPO_STR, HRN_PATH_REPO);
+ #define HRN_PATH                                                    "{[C_HRN_PATH]}"
+ 
+ #ifdef HRN_FEATURE_STRING
++STRING_DECLARE(HRN_PATH_STR);
+ STRING_EXTERN(HRN_PATH_STR, HRN_PATH);
+ #endif
+ 
+@@ -86,6 +90,7 @@ STRING_EXTERN(HRN_PATH_STR, HRN_PATH);
+ #define TEST_PG_VERSION                                             "{[C_TEST_PG_VERSION]}"
+ 
+ #ifdef HRN_FEATURE_STRING
++STRING_DECLARE(TEST_USER_STR);
+ STRING_EXTERN(TEST_USER_STR, TEST_USER);
+ #endif
+ 
+@@ -95,6 +100,7 @@ STRING_EXTERN(TEST_USER_STR, TEST_USER);
+ #define TEST_GROUP_ID_Z                                             "{[C_TEST_GROUP_ID]}"
+ 
+ #ifdef HRN_FEATURE_STRING
++STRING_DECLARE(TEST_GROUP_STR);
+ STRING_EXTERN(TEST_GROUP_STR, TEST_GROUP);
+ #endif
+ 
+-- 
+2.34.1
+
