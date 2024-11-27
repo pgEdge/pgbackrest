@@ -53,6 +53,7 @@ typedef struct HrnHostTestDefine
     unsigned int rt;                                                // Repository total
     bool bnd;                                                       // Bundling enabled?
     bool bi;                                                        // Block incremental enabled?
+    bool fi;                                                        // Full/incr backup?
 } HrnHostTestDefine;
 
 /***********************************************************************************************************************************
@@ -388,7 +389,7 @@ hrnHostSqlValue(HrnHost *const this, const char *const statement)
 }
 
 #define HRN_HOST_SQL_VALUE(this, statement)                                                                                        \
-    HRN_HOST_SQL(this, statement, pgClientQueryResulColumn)
+    HRN_HOST_SQL(this, statement, pgClientQueryResultColumn)
 
 // Test a single value
 void hrnHostSqlTest(HrnHost *this, const String *statement, const String *expected);
@@ -431,6 +432,9 @@ const String *hrnHostCipherPass(void);
 
 // Compress Type
 CompressType hrnHostCompressType(void);
+
+// Full/incr enabled
+bool hrnHostFullIncr(void);
 
 // Non version-specific testing enabled
 bool hrnHostNonVersionSpecific(void);

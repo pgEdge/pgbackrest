@@ -18,6 +18,17 @@
 
         <release-improvement-list>
             <release-item>
+                <github-pull-request id="2488"/>
+
+                <release-item-contributor-list>
+                    <release-item-contributor id="david.steele"/>
+                    <release-item-reviewer id="stefan.fercot"/>
+                </release-item-contributor-list>
+
+                <p>Use <proper>lz4</proper> for protocol compression.</p>
+            </release-item>
+
+            <release-item>
                 <github-pull-request id="2472"/>
 
                 <release-item-contributor-list>
@@ -39,5 +50,35 @@
                 <p>Remove <proper>autoconf</proper>/<proper>make</proper> build.</p>
             </release-item>
         </release-improvement-list>
+
+        <release-development-list>
+            <release-item>
+                <github-pull-request id="2306"/>
+
+                <release-item-contributor-list>
+                    <release-item-contributor id="david.steele"/>
+                    <release-item-reviewer id="david.christensen"/>
+                    <release-item-reviewer id="stefan.fercot"/>
+                </release-item-contributor-list>
+
+                <p>Full/incremental backup method.</p>
+            </release-item>
+        </release-development-list>
     </release-core-list>
+
+    <release-test-list>
+        <release-improvement-list>
+            <release-item>
+                <github-issue id="2463"/>
+                <github-pull-request id="2481"/>
+
+                <release-item-contributor-list>
+                    <release-item-contributor id="viktor.kurilko"/>
+                    <release-item-reviewer id="david.steele"/>
+                </release-item-contributor-list>
+
+                <p>Stabilize async archiving in integration tests.</p>
+            </release-item>
+        </release-improvement-list>
+    </release-test-list>
 </release>

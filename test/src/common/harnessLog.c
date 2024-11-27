@@ -26,9 +26,9 @@ Include shimmed C modules
 /***********************************************************************************************************************************
 Log settings for testing
 ***********************************************************************************************************************************/
-LogLevel logLevelTest = logLevelInfo;
-LogLevel logLevelTestDefault = logLevelOff;
-bool logDryRunTest = false;
+static LogLevel logLevelTest = logLevelInfo;
+static LogLevel logLevelTestDefault = logLevelOff;
+static bool logDryRunTest = false;
 
 /***********************************************************************************************************************************
 Name of file where logs are stored for testing
@@ -38,7 +38,7 @@ static char logFile[1024];
 /***********************************************************************************************************************************
 Buffer where log results are loaded for comparison purposes
 ***********************************************************************************************************************************/
-char harnessLogBuffer[256 * 1024];
+static char harnessLogBuffer[256 * 1024];
 
 /***********************************************************************************************************************************
 Open a log file -- centralized here for error handling
@@ -304,6 +304,32 @@ hrnLogReplaceAdd(const char *expression, const char *expressionSub, const char *
     FUNCTION_HARNESS_RETURN_VOID();
 }
 
+void
+hrnLogReplaceRemove(const char *const expression)
+{
+    FUNCTION_HARNESS_BEGIN();
+        FUNCTION_HARNESS_PARAM(STRINGZ, expression);
+    FUNCTION_HARNESS_END();
+
+    unsigned int replaceIdx = 0;
+
+    for (; replaceIdx < lstSize(harnessLog.replaceList); replaceIdx++)
+    {
+        const HarnessLogReplace *const logReplace = lstGet(harnessLog.replaceList, replaceIdx);
+
+        if (strEqZ(logReplace->expression, expression))
+        {
+            lstRemoveIdx(harnessLog.replaceList, replaceIdx);
+            break;
+        }
+    }
+
+    if (replaceIdx == lstSize(harnessLog.replaceList))
+        THROW_FMT(AssertError, "expression '%s' not found in replace list", expression);
+
+    FUNCTION_HARNESS_RETURN_VOID();
+}
+
 /**********************************************************************************************************************************/
 void
 hrnLogReplaceClear(void)
@@ -351,7 +377,7 @@ hrnLogReplace(void)
                         if (!regExpMatch(logReplace->regExpSub, match))
                         {
                             THROW_FMT(
-                                AssertError, "unable to find sub expression '%s' in '%s' extracted with expresion '%s'",
+                                AssertError, "unable to find sub expression '%s' in '%s' extracted with expression '%s'",
                                 strZ(logReplace->expressionSub), strZ(match), strZ(logReplace->expression));
                         }
 

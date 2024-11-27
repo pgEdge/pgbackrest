@@ -767,8 +767,8 @@ option:
   compress-level-network:
     section: global
     type: integer
-    default: 3
-    allow-range: [0, 9]
+    default: 1
+    allow-range: [-5, 12]
     command:
       annotate: {}
       archive-get: {}
@@ -1227,6 +1227,21 @@ option:
       default: false
       list:
         - true
+
+  backup-full-incr:
+    section: global
+    type: boolean
+    default: false
+    internal: true
+    command:
+      backup:
+        depend:
+          option: online
+          default: false
+          list:
+            - true
+    command-role:
+      main: {}
 
   backup-standby:
     section: global
