@@ -450,25 +450,36 @@ test_local() {
     docker exec "$CONTAINER" psql -U postgres -d postgres -c "DROP TABLE restore_test;" >/dev/null
     print_success "Test table dropped"
     
+    # Get the actual PostgreSQL data directory before stopping container
+    PGDATA_PATH=$(docker exec "$CONTAINER" bash -c 'psql -U postgres -d postgres -t -c "SHOW data_directory;" 2>/dev/null | xargs' || echo "")
+    if [ -z "$PGDATA_PATH" ]; then
+        # Fallback: try to find it from the config
+        PGDATA_PATH=$(docker exec "$CONTAINER" bash -c 'grep "pg1-path" /etc/pgbackrest/pgbackrest.conf | tail -1 | cut -d= -f2 | xargs' || echo "")
+    fi
+    if [ -z "$PGDATA_PATH" ]; then
+        # Fallback: try to find PG_VERSION file
+        PGDATA_PATH=$(docker exec "$CONTAINER" find /var/lib/postgresql -name "PG_VERSION" -type f 2>/dev/null | head -1 | xargs dirname 2>/dev/null || echo "")
+    fi
+    if [ -z "$PGDATA_PATH" ]; then
+        # Final fallback: use default
+        PGDATA_PATH="/var/lib/postgresql/data"
+        print_warning "Could not detect PostgreSQL data directory, using default: $PGDATA_PATH"
+    else
+        print_success "Detected PostgreSQL data directory: $PGDATA_PATH"
+    fi
+    
     # Stop container
     docker stop "$CONTAINER"
     
     # Restore from local
     print_header "Restore from Local (repo1)"
-    # Get the actual PGDATA path from the container
-    PGDATA_PATH=$(docker exec "$CONTAINER" bash -c 'echo $PGDATA' 2>/dev/null || echo "/var/lib/postgresql/18/docker")
-    if [ -z "$PGDATA_PATH" ] || [ "$PGDATA_PATH" = "/var/lib/postgresql/data" ]; then
-        # Try to detect the actual path
-        PGDATA_PATH=$(docker exec "$CONTAINER" find /var/lib/postgresql -name "PG_VERSION" -type f 2>/dev/null | head -1 | xargs dirname 2>/dev/null || echo "/var/lib/postgresql/18/docker")
-    fi
-    
     echo "Restoring to PGDATA: $PGDATA_PATH"
     docker run --rm \
       --entrypoint bash \
       -v pgdata:/var/lib/postgresql \
       -v pgrepo:/var/lib/pgbackrest \
       "$IMAGE" \
-      -lc "rm -rf $PGDATA_PATH/* && pgbackrest --stanza=demo restore --set='$BACKUP_LABEL_LOCAL' --type=immediate --pg1-path=$PGDATA_PATH"
+      -lc "rm -rf \"$PGDATA_PATH\"/* && pgbackrest --stanza=demo restore --set='$BACKUP_LABEL_LOCAL' --type=immediate --pg1-path=\"$PGDATA_PATH\""
     
     print_success "Restore complete"
     
@@ -685,6 +696,20 @@ test_azure_blob() {
     fi
     print_success "Test data dropped"
     
+    # Get the actual PostgreSQL data directory before stopping container
+    ACTUAL_DATA_DIR=$(docker exec "$CONTAINER" bash -c 'psql -U postgres -d postgres -t -c "SHOW data_directory;" 2>/dev/null | xargs' || echo "")
+    if [ -z "$ACTUAL_DATA_DIR" ]; then
+        # Fallback: try to find it from the config
+        ACTUAL_DATA_DIR=$(docker exec "$CONTAINER" bash -c 'grep "pg1-path" /etc/pgbackrest/pgbackrest.conf | tail -1 | cut -d= -f2 | xargs' || echo "")
+    fi
+    if [ -z "$ACTUAL_DATA_DIR" ]; then
+        # Final fallback: use default
+        ACTUAL_DATA_DIR="/var/lib/postgresql/data"
+        print_warning "Could not detect PostgreSQL data directory, using default: $ACTUAL_DATA_DIR"
+    else
+        print_success "Detected PostgreSQL data directory: $ACTUAL_DATA_DIR"
+    fi
+    
     # Stop container
     docker stop "$CONTAINER"
     
@@ -697,10 +722,15 @@ test_azure_blob() {
       -e AZURE_KEY="$AZURE_SAS_TOKEN" \
       -e AZURE_KEY_TYPE="$AZURE_KEY_TYPE" \
       -e AZURE_REPO_PATH="$AZURE_REPO_PATH" \
+      -e ACTUAL_DATA_DIR="$ACTUAL_DATA_DIR" \
       -v pgdata:/var/lib/postgresql \
       -v pgrepo:/var/lib/pgbackrest \
       "$IMAGE" \
-      -lc "/usr/local/bin/configure-azure.sh && rm -rf /var/lib/postgresql/data/* && pgbackrest --stanza=demo restore --set='$BACKUP_LABEL_AZURE' --type=immediate"
+      -lc "/usr/local/bin/configure-azure.sh || true; \
+           DATA_DIR=\${ACTUAL_DATA_DIR:-/var/lib/postgresql/data}; \
+           echo \"Restoring to data directory: \$DATA_DIR\"; \
+           rm -rf \"\$DATA_DIR\"/* && \
+           pgbackrest --stanza=demo restore --set='$BACKUP_LABEL_AZURE' --type=immediate --pg1-path=\"\$DATA_DIR\""
     
     print_success "Restore complete"
     
@@ -1013,6 +1043,20 @@ PYEOF
     fi
     print_success "Test data dropped"
     
+    # Get the actual PostgreSQL data directory before stopping container
+    ACTUAL_DATA_DIR=$(docker exec "$CONTAINER" bash -c 'psql -U postgres -d postgres -t -c "SHOW data_directory;" 2>/dev/null | xargs' || echo "")
+    if [ -z "$ACTUAL_DATA_DIR" ]; then
+        # Fallback: try to find it from the config
+        ACTUAL_DATA_DIR=$(docker exec "$CONTAINER" bash -c 'grep "pg1-path" /etc/pgbackrest/pgbackrest.conf | tail -1 | cut -d= -f2 | xargs' || echo "")
+    fi
+    if [ -z "$ACTUAL_DATA_DIR" ]; then
+        # Final fallback: use default
+        ACTUAL_DATA_DIR="/var/lib/postgresql/data"
+        print_warning "Could not detect PostgreSQL data directory, using default: $ACTUAL_DATA_DIR"
+    else
+        print_success "Detected PostgreSQL data directory: $ACTUAL_DATA_DIR"
+    fi
+    
     # Stop container
     docker stop "$CONTAINER"
     
@@ -1024,6 +1068,7 @@ PYEOF
       -e AZURE_CONTAINER="$AZURE_CONTAINER" \
       -e AZURE_KEY_TYPE="$AZURE_KEY_TYPE" \
       -e AZURE_REPO_PATH="$AZURE_REPO_PATH" \
+      -e ACTUAL_DATA_DIR="$ACTUAL_DATA_DIR" \
       -v pgdata:/var/lib/postgresql \
       -v pgrepo:/var/lib/pgbackrest \
       "$IMAGE" \
@@ -1044,8 +1089,10 @@ PYEOF
              chmod 640 /etc/pgbackrest/pgbackrest.conf; \
              rm -f \$TMP_FILE; \
            fi; \
-           rm -rf /var/lib/postgresql/data/* && \
-           pgbackrest --repo=2 --stanza=demo restore --set='$BACKUP_LABEL_AMI' --type=immediate"
+           DATA_DIR=\${ACTUAL_DATA_DIR:-/var/lib/postgresql/data}; \
+           echo \"Restoring to data directory: \$DATA_DIR\"; \
+           rm -rf \"\$DATA_DIR\"/* && \
+           pgbackrest --repo=2 --stanza=demo restore --set='$BACKUP_LABEL_AMI' --type=immediate --pg1-path=\"\$DATA_DIR\""
     
     print_success "Restore complete"
     
