@@ -135,8 +135,10 @@ storageAzureAuth(
         httpHeaderPut(httpHeader, AZURE_HEADER_VERSION_STR, AZURE_HEADER_VERSION_VALUE_STR);
 
         // Shared key authentication
-        if (this->keyType == storageAzureKeyTypeShared && this->sharedKey != NULL)
+        if (this->keyType == storageAzureKeyTypeShared)
         {
+            ASSERT(this->sharedKey != NULL);
+
             // Generate canonical headers
             String *const headerCanonical = strNew();
             const StringList *const headerKeyList = httpHeaderList(httpHeader);
@@ -888,6 +890,7 @@ storageAzureNew(
                 uriStyle == storageAzureUriStyleHost ?
                     strNewFmt("/%s", strZ(container)) : strNewFmt("/%s/%s", strZ(account), strZ(container)),
             .keyType = keyType,
+            .accessTokenExpirationTime = 0,
         };
 
         // Create tag query string
