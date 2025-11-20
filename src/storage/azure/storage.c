@@ -131,14 +131,19 @@ storageAzureAuth(
     {
         // Set required headers
         httpHeaderPut(httpHeader, HTTP_HEADER_HOST_STR, this->host);
+
+        // Date header is required for shared key and SAS authentication
+        if (this->keyType == storageAzureKeyTypeShared || this->keyType == storageAzureKeyTypeSas)
+        {
+            httpHeaderPut(httpHeader, HTTP_HEADER_DATE_STR, dateTime);
+        }
+
+        // Set version header (required for all auth types)
         httpHeaderPut(httpHeader, AZURE_HEADER_VERSION_STR, AZURE_HEADER_VERSION_VALUE_STR);
 
         // Shared key authentication
         if (this->keyType == storageAzureKeyTypeShared)
         {
-            // Date header is required for shared key authentication
-            httpHeaderPut(httpHeader, HTTP_HEADER_DATE_STR, dateTime);
-
             ASSERT(this->sharedKey != NULL);
 
             // Generate canonical headers
