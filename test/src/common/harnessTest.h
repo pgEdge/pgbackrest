@@ -102,7 +102,7 @@ Test that an expected error is actually thrown and error when it isn't
 {                                                                                                                                  \
     bool TEST_ERROR_catch = false;                                                                                                 \
                                                                                                                                    \
-    /* Set the line number for the current function in the stack trace */                                                          \
+        /* Set the line number for the current function in the stack trace */                                                          \
     FUNCTION_HARNESS_STACK_TRACE_LINE_SET(__LINE__);                                                                               \
                                                                                                                                    \
     hrnTestLogPrefix(__LINE__);                                                                                                    \
@@ -144,7 +144,7 @@ Test that an expected error is actually thrown and error when it isn't
     const char *const errorMessageExpected[] = {__VA_ARGS__};                                                                      \
     bool TEST_ERROR_catch = false;                                                                                                 \
                                                                                                                                    \
-    /* Set the line number for the current function in the stack trace */                                                          \
+        /* Set the line number for the current function in the stack trace */                                                          \
     FUNCTION_HARNESS_STACK_TRACE_LINE_SET(__LINE__);                                                                               \
                                                                                                                                    \
     hrnTestLogPrefix(__LINE__);                                                                                                    \

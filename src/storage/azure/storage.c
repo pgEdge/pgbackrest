@@ -218,7 +218,8 @@ storageAzureAuth(
                 httpQueryAdd(authQuery, AZURE_QUERY_RESOURCE, strNewFmt("https://%s", strZ(this->host)));
 
                 HttpRequest *const request = httpRequestNewP(
-                    this->credHttpClient, HTTP_VERB_GET_STR, STRDEF(AZURE_CREDENTIAL_PATH), .header = authHeader, .query = authQuery);
+                    this->credHttpClient, HTTP_VERB_GET_STR, STRDEF(AZURE_CREDENTIAL_PATH), .header = authHeader,
+                    .query = authQuery);
                 HttpResponse *const response = httpRequestResponse(request, true);
 
                 // Set the access_token on success and store an expiration time when we should re-fetch it

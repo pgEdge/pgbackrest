@@ -5519,7 +5519,7 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
                 ),                                                                                        // opt/repo-azure-key-type
                                                                                                           // opt/repo-azure-key-type
                 PARSE_RULE_OPTIONAL_ALLOW_LIST                                                            // opt/repo-azure-key-type
-                (             
+                (                                                                                         // opt/repo-azure-key-type
                     PARSE_RULE_VAL_STRID(Auto),                                                           // opt/repo-azure-key-type
                     PARSE_RULE_VAL_STRID(Shared),                                                         // opt/repo-azure-key-type
                     PARSE_RULE_VAL_STRID(Sas),                                                            // opt/repo-azure-key-type
@@ -11712,6 +11712,7 @@ static const uint8_t optionResolveOrder[] =
     cfgOptRepoAzureAccount,                                                                                     // opt-resolve-order
     cfgOptRepoAzureContainer,                                                                                   // opt-resolve-order
     cfgOptRepoAzureEndpoint,                                                                                    // opt-resolve-order
+    cfgOptRepoAzureKey,                                                                                         // opt-resolve-order
     cfgOptRepoAzureKeyType,                                                                                     // opt-resolve-order
     cfgOptRepoAzureUriStyle,                                                                                    // opt-resolve-order
     cfgOptRepoBlock,                                                                                            // opt-resolve-order
@@ -11765,7 +11766,6 @@ static const uint8_t optionResolveOrder[] =
     cfgOptPgHostCmd,                                                                                            // opt-resolve-order
     cfgOptPgHostKeyFile,                                                                                        // opt-resolve-order
     cfgOptPgHostPort,                                                                                           // opt-resolve-order
-    cfgOptRepoAzureKey,                                                                                         // opt-resolve-order
     cfgOptRepoGcsBucket,                                                                                        // opt-resolve-order
     cfgOptRepoGcsEndpoint,                                                                                      // opt-resolve-order
     cfgOptRepoGcsKey,                                                                                           // opt-resolve-order

@@ -427,8 +427,8 @@ Macros for defining groups of functions that implement various queries and comma
     {.session = sessionParam, .function = HRN_PQ_GETRESULT, .resultNull = true}
 
 #define                                                                                                                            \
-    HRN_PQ_SCRIPT_REPLAY_TARGET_REACHED(                                                                                           \
-        sessionParam, walNameParam, lsnNameParam, targetLsnParam, targetReachedParam, replayLsnParam)                              \
+        HRN_PQ_SCRIPT_REPLAY_TARGET_REACHED(                                                                                           \
+            sessionParam, walNameParam, lsnNameParam, targetLsnParam, targetReachedParam, replayLsnParam)                              \
     {.session = sessionParam,                                                                                                      \
         .function = HRN_PQ_SENDQUERY,                                                                                              \
         .param = zNewFmt(                                                                                                          \
@@ -456,8 +456,8 @@ Macros for defining groups of functions that implement various queries and comma
     HRN_PQ_SCRIPT_REPLAY_TARGET_REACHED(sessionParam, "wal", "lsn", targetLsnParam, targetReachedParam, reachedLsnParam)
 
 #define                                                                                                                            \
-    HRN_PQ_SCRIPT_CHECKPOINT_TARGET_REACHED(                                                                                       \
-        sessionParam, lsnNameParam, targetLsnParam, targetReachedParam, checkpointLsnParam, sleepParam)                            \
+        HRN_PQ_SCRIPT_CHECKPOINT_TARGET_REACHED(                                                                                       \
+            sessionParam, lsnNameParam, targetLsnParam, targetReachedParam, checkpointLsnParam, sleepParam)                            \
     {.session = sessionParam,                                                                                                      \
         .function = HRN_PQ_SENDQUERY,                                                                                              \
         .param = zNewFmt(                                                                                                          \
@@ -479,14 +479,14 @@ Macros for defining groups of functions that implement various queries and comma
     {.session = sessionParam, .function = HRN_PQ_GETRESULT, .resultNull = true}
 
 #define                                                                                                                            \
-    HRN_PQ_SCRIPT_CHECKPOINT_TARGET_REACHED_96(                                                                                    \
-        sessionParam, targetLsnParam, targetReachedParam, checkpointLsnParam, sleepParam)                                          \
+        HRN_PQ_SCRIPT_CHECKPOINT_TARGET_REACHED_96(                                                                                    \
+            sessionParam, targetLsnParam, targetReachedParam, checkpointLsnParam, sleepParam)                                          \
     HRN_PQ_SCRIPT_CHECKPOINT_TARGET_REACHED(                                                                                       \
         sessionParam, "location", targetLsnParam, targetReachedParam, checkpointLsnParam, sleepParam)
 
 #define                                                                                                                            \
-    HRN_PQ_SCRIPT_CHECKPOINT_TARGET_REACHED_GE_10(                                                                                 \
-        sessionParam, targetLsnParam, targetReachedParam, checkpointLsnParam, sleepParam)                                          \
+        HRN_PQ_SCRIPT_CHECKPOINT_TARGET_REACHED_GE_10(                                                                                 \
+            sessionParam, targetLsnParam, targetReachedParam, checkpointLsnParam, sleepParam)                                          \
     HRN_PQ_SCRIPT_CHECKPOINT_TARGET_REACHED(                                                                                       \
         sessionParam, "lsn", targetLsnParam, targetReachedParam, checkpointLsnParam, sleepParam)
 
