@@ -2787,7 +2787,8 @@ cfgParse(const Storage *const storage, const unsigned int argListSize, const cha
                     if ((!configOptionValue->set && !parseOptionValue->negate) || config->help)
                     {
                         // If the option has a default, only apply it if the dependency is valid
-                        // If dependency is invalid, don't apply defaults as they may cause dependent options to be incorrectly required
+                        // If dependency is invalid, don't apply defaults as they may cause dependent options to be incorrectly
+                        // required
                         if (cfgParseOptionalRule(&optionalRules, parseRuleOptionalTypeDefault, config->command, optionId) &&
                             (dependResult.dependId == 0 || dependResult.valid))
                         {

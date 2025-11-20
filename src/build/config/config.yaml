@@ -1728,43 +1728,6 @@ option:
       main: {}
       local: {}
 
-  repo-azure-endpoint:
-    inherit: repo-azure-account
-    default: blob.core.windows.net
-
-  repo-azure-key:
-    section: global
-    type: string
-    group: repo
-    command: repo-type
-    required: false
-    secure: true
-    depend:
-      option: repo-azure-key-type
-      list:
-        - shared
-        - sas
-
-  repo-azure-key-type:
-    inherit: repo-azure-container
-    type: string-id
-    default: shared
-    allow-list:
-      - auto
-      - shared
-      - sas
-
-  repo-azure-uri-style:
-    section: global
-    group: repo
-    type: string-id
-    default: host
-    allow-list:
-      - host
-      - path
-    command: repo-type
-    depend: repo-azure-account
-
   # Repository retention options
   #---------------------------------------------------------------------------------------------------------------------------------
   repo-retention-full-type:
@@ -2225,6 +2188,7 @@ option:
     type: string-id
     default: shared
     allow-list:
+      - auto
       - shared
       - sas
 
