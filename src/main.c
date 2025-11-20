@@ -110,8 +110,8 @@ main(int argListSize, const char *argList[])
             {
                 // Annotate command
                 // -----------------------------------------------------------------------------------------------------------------
-                case cfgCmdAnnotate :
-                        cmdAnnotate();
+                case cfgCmdAnnotate:
+                    cmdAnnotate();
                     break;
 
                 // Archive get command

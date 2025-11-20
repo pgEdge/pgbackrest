@@ -61,8 +61,8 @@ main(int argListSize, const char *argList[])
         {
             // Build
             // -----------------------------------------------------------------------------------------------------------------
-            case cfgCmdBuild :
-                    cmdBuild(cfgOptionStr(cfgOptRepoPath));
+            case cfgCmdBuild:
+                cmdBuild(cfgOptionStr(cfgOptRepoPath));
                 break;
 
             // Help/version
