@@ -475,7 +475,8 @@ testRun(void)
         storage->accessTokenExpirationTime = time(NULL) + 3600;
 
         query = httpQueryAdd(httpQueryNewP(), STRDEF("a"), STRDEF("b"));
-        header = httpHeaderAdd(httpHeaderNew(NULL), HTTP_HEADER_CONTENT_LENGTH_STR, STRDEF("77"));
+        // Create header with redaction list to match actual usage
+        header = httpHeaderAdd(httpHeaderNew(storage->headerRedactList), HTTP_HEADER_CONTENT_LENGTH_STR, STRDEF("77"));
 
         TEST_RESULT_VOID(storageAzureAuth(storage, HTTP_VERB_GET_STR, STRDEF("/path/file"), query, dateTime, header), "auth");
         TEST_RESULT_VOID(FUNCTION_LOG_OBJECT_FORMAT(header, httpHeaderToLog, logBuf, sizeof(logBuf)), "httpHeaderToLog");
