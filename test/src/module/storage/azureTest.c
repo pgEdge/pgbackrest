@@ -449,7 +449,7 @@ testRun(void)
 
         TEST_RESULT_VOID(storageAzureAuth(storage, HTTP_VERB_GET_STR, STRDEF("/path/file"), query, dateTime, header), "auth");
         TEST_RESULT_VOID(FUNCTION_LOG_OBJECT_FORMAT(header, httpHeaderToLog, logBuf, sizeof(logBuf)), "httpHeaderToLog");
-        TEST_RESULT_Z(logBuf, "{content-length: '66', host: 'account.blob.core.usgovcloudapi.net', x-ms-version: '2024-08-04'}", "check headers");
+        TEST_RESULT_Z(logBuf, "{content-length: '66', host: 'account.blob.core.usgovcloudapi.net'}", "check headers");
         TEST_RESULT_STR_Z(httpQueryRenderP(query), "a=b&sig=key", "check query");
     }
 

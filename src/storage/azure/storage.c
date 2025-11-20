@@ -138,8 +138,11 @@ storageAzureAuth(
             httpHeaderPut(httpHeader, HTTP_HEADER_DATE_STR, dateTime);
         }
 
-        // Set version header (required for all auth types)
-        httpHeaderPut(httpHeader, AZURE_HEADER_VERSION_STR, AZURE_HEADER_VERSION_VALUE_STR);
+        // Set version header (required for shared key and auto auth types, not for SAS)
+        if (this->keyType != storageAzureKeyTypeSas)
+        {
+            httpHeaderPut(httpHeader, AZURE_HEADER_VERSION_STR, AZURE_HEADER_VERSION_VALUE_STR);
+        }
 
         // Shared key authentication
         if (this->keyType == storageAzureKeyTypeShared)
