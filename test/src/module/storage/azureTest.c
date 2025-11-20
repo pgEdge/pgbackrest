@@ -519,16 +519,17 @@ testRun(void)
                 hrnServerScriptAccept(cred);
 
                 // Mock the Managed Identity endpoint response
-                hrnServerScriptExpectZ(
+                hrnServerScriptExpect(
                     cred,
-                    "GET /metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://account.blob.core.windows.net "
-                    "HTTP/1.1\r\n"
-                    "user-agent:" PROJECT_NAME "/" PROJECT_VERSION "\r\n"
-                    "content-length:0\r\n"
-                    "host:%s\r\n"
-                    "metadata:true\r\n"
-                    "\r\n",
-                    strZ(hrnServerHost()));
+                    strNewFmt(
+                        "GET /metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://account.blob.core.windows.net "
+                        "HTTP/1.1\r\n"
+                        "user-agent:" PROJECT_NAME "/" PROJECT_VERSION "\r\n"
+                        "content-length:0\r\n"
+                        "host:%s\r\n"
+                        "metadata:true\r\n"
+                        "\r\n",
+                        strZ(hrnServerHost())));
 
                 testResponseP(
                     cred, .content = "{\"access_token\":\"fetched-token-12345\",\"expires_in\":3600,\"token_type\":\"Bearer\"}");
