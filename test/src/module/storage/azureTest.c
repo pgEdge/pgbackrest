@@ -619,7 +619,7 @@ testRun(void)
                     ProtocolError,
                     "HTTP request failed with 403 (Forbidden):\n"
                     "*** Path/Query ***:\n"
-                    "GET /metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Faccount.blob.core"
+                    "GET /metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%%3A%%2F%%2Faccount.blob.core"
                     ".windows.net\n"
                     "*** Request Headers ***:\n"
                     "Metadata: true\n"
