@@ -609,7 +609,7 @@ testRun(void)
                         "\r\n",
                         strZ(hrnServerHost())));
 
-                testResponseP(cred, .code = 500, .content = "Internal Server Error");
+                testResponseP(cred, .code = 403, .content = "Forbidden");
 
                 query = httpQueryAdd(httpQueryNewP(), STRDEF("a"), STRDEF("b"));
                 header = httpHeaderAdd(httpHeaderNew(storage->headerRedactList), HTTP_HEADER_CONTENT_LENGTH_STR, STRDEF("99"));
@@ -617,7 +617,7 @@ testRun(void)
                 TEST_ERROR(
                     storageAzureAuth(storage, HTTP_VERB_GET_STR, STRDEF("/path/file"), query, dateTime, header),
                     ProtocolError,
-                    "HTTP request failed with 500 (Internal Server Error):\n"
+                    "HTTP request failed with 403 (Forbidden):\n"
                     "*** Path/Query ***:\n"
                     "GET /metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Faccount.blob.core"
                     ".windows.net");
