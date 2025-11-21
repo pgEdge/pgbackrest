@@ -335,8 +335,14 @@
         RUN sed -i 's/^\#create\_main\_cluster.*$/create\_main\_cluster \= false/' /etc/postgresql-common/createcluster.conf
         RUN apt-get install -y --no-install-recommends postgresql-{[pg-version]} postgresql-{[pg-version-upgrade]} 2>&amp;1
 
-        # Install Azure CLI
-        RUN curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+        # Install Azure CLI (using Microsoft apt repository since aka.ms script now redirects)
+        RUN curl -sSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o \
+                /usr/share/keyrings/microsoft-archive-keyring.gpg &amp;&amp; \
+            echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-archive-keyring.gpg] \
+                https://packages.microsoft.com/repos/azure-cli/ jammy main" > \
+                /etc/apt/sources.list.d/azure-cli.list &amp;&amp; \
+            apt-get update &amp;&amp; \
+            apt-get install -y azure-cli
 
         # Create an ssh key for root so all hosts can ssh to each other as root
         RUN \ {[ssh-key-install]}
