@@ -148,6 +148,10 @@ testResponse(IoWrite *write, TestResponseParam param)
         case 403:
             strCatZ(response, "Forbidden");
             break;
+
+        case 500:
+            strCatZ(response, "Internal Server Error");
+            break;
     }
 
     // End header
@@ -549,6 +553,74 @@ testRun(void)
                     httpHeaderGet(header, HTTP_HEADER_AUTHORIZATION_STR), STRDEF("Bearer fetched-token-12345"),
                     "check authorization");
                 TEST_RESULT_BOOL(storage->accessTokenExpirationTime > time(NULL), true, "check token expiration set");
+
+                hrnServerScriptClose(cred);
+                hrnServerScriptEnd(cred);
+            }
+            HRN_FORK_PARENT_END();
+        }
+        HRN_FORK_END();
+
+        // -------------------------------------------------------------------------------------------------------------------------
+        TEST_TITLE("auto auth with token fetch error");
+
+        HRN_FORK_BEGIN()
+        {
+            const unsigned int testPortCred = hrnServerPortNext();
+
+            HRN_FORK_CHILD_BEGIN(.prefix = "cred server", .timeout = 10000)
+            {
+                TEST_RESULT_VOID(hrnServerRunP(HRN_FORK_CHILD_READ(), hrnServerProtocolSocket, testPortCred), "cred server");
+            }
+            HRN_FORK_CHILD_END();
+
+            HRN_FORK_PARENT_BEGIN(.prefix = "cred client")
+            {
+                IoWrite *cred = hrnServerScriptBegin(HRN_FORK_PARENT_WRITE(0));
+
+                TEST_ASSIGN(
+                    storage,
+                    (StorageAzure *)storageDriver(
+                        storageAzureNew(
+                            STRDEF("/repo"), false, 0, NULL, TEST_CONTAINER_STR, TEST_ACCOUNT_STR, storageAzureKeyTypeAuto, NULL,
+                            16, NULL, STRDEF("blob.core.windows.net"), storageAzureUriStyleHost, 443, 1000, true, NULL, NULL)),
+                    "new azure storage - auto key");
+
+                // Replace the credHttpClient to point to the mock server
+                // Also update credHost so the Host header matches
+                storage->credHost = hrnServerHost();
+                storage->credHttpClient = httpClientNew(
+                    sckClientNew(hrnServerHost(), testPortCred, 2000, 2000), 2000);
+
+                // Set expiration time to past to trigger token fetch
+                storage->accessTokenExpirationTime = 0;
+
+                hrnServerScriptAccept(cred);
+
+                // Mock the Managed Identity endpoint to return an error
+                hrnServerScriptExpect(
+                    cred,
+                    strNewFmt(
+                        "GET /metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%%3A%%2F%%2Faccount.blob.core"
+                        ".windows.net HTTP/1.1\r\n"
+                        "user-agent:" PROJECT_NAME "/" PROJECT_VERSION "\r\n"
+                        "Metadata:true\r\n"
+                        "host:%s\r\n"
+                        "\r\n",
+                        strZ(hrnServerHost())));
+
+                testResponseP(cred, .code = 500, .content = "Internal Server Error");
+
+                query = httpQueryAdd(httpQueryNewP(), STRDEF("a"), STRDEF("b"));
+                header = httpHeaderAdd(httpHeaderNew(storage->headerRedactList), HTTP_HEADER_CONTENT_LENGTH_STR, STRDEF("99"));
+
+                TEST_ERROR(
+                    storageAzureAuth(storage, HTTP_VERB_GET_STR, STRDEF("/path/file"), query, dateTime, header),
+                    ProtocolError,
+                    "HTTP request failed with 500 (Internal Server Error):\n"
+                    "*** Path/Query ***:\n"
+                    "GET /metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Faccount.blob.core"
+                    ".windows.net");
 
                 hrnServerScriptClose(cred);
                 hrnServerScriptEnd(cred);
