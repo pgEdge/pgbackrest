@@ -609,18 +609,22 @@ testRun(void)
                         "\r\n",
                         strZ(hrnServerHost())));
 
-                testResponseP(cred, .code = 403, .content = "Forbidden");
+                testResponseP(cred, .code = 403);
 
                 query = httpQueryAdd(httpQueryNewP(), STRDEF("a"), STRDEF("b"));
                 header = httpHeaderAdd(httpHeaderNew(storage->headerRedactList), HTTP_HEADER_CONTENT_LENGTH_STR, STRDEF("99"));
 
-                TEST_ERROR(
+                TEST_ERROR_FMT(
                     storageAzureAuth(storage, HTTP_VERB_GET_STR, STRDEF("/path/file"), query, dateTime, header),
                     ProtocolError,
                     "HTTP request failed with 403 (Forbidden):\n"
                     "*** Path/Query ***:\n"
                     "GET /metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Faccount.blob.core"
-                    ".windows.net");
+                    ".windows.net\n"
+                    "*** Request Headers ***:\n"
+                    "Metadata: true\n"
+                    "host: %s",
+                    strZ(hrnServerHost()));
 
                 hrnServerScriptClose(cred);
                 hrnServerScriptEnd(cred);
