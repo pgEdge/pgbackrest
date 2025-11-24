@@ -541,8 +541,8 @@ testRun(void)
                     "GET /metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Faccount.blob.core.windows.net HTTP/1.1\r\n");
                 strCatFmt(credRequest, "user-agent:%s/%s\r\n", PROJECT_NAME, PROJECT_VERSION);
                 strCatFmt(credRequest, "Metadata:true\r\n");
-                strCatFmt(credRequest, "host:%s\r\n", strZ(hrnServerHost()));
                 strCatZ(credRequest, "content-length:0\r\n");
+                strCatFmt(credRequest, "host:%s\r\n", strZ(hrnServerHost()));
                 strCatZ(credRequest, "\r\n");
                 hrnServerScriptExpect(credService, credRequest);
 
@@ -610,8 +610,8 @@ testRun(void)
                     "GET /metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Faccount.blob.core.windows.net HTTP/1.1\r\n");
                 strCatFmt(credRequest, "user-agent:%s/%s\r\n", PROJECT_NAME, PROJECT_VERSION);
                 strCatFmt(credRequest, "Metadata:true\r\n");
-                strCatFmt(credRequest, "host:%s\r\n", strZ(hrnServerHost()));
                 strCatZ(credRequest, "content-length:0\r\n");
+                strCatFmt(credRequest, "host:%s\r\n", strZ(hrnServerHost()));
                 strCatZ(credRequest, "\r\n");
                 hrnServerScriptExpect(credService, credRequest);
 
