@@ -1198,7 +1198,7 @@ testRun(void)
         hrnCfgArgRawZ(argList, cfgOptStanza, "db");
         hrnCfgArgKeyRawZ(argList, cfgOptRepoType, 1, "azure");
         hrnCfgArgKeyRawZ(argList, cfgOptRepoAzureContainer, 1, "container");
-        hrnCfgArgRawStrId(argList, cfgOptRepoAzureKeyType, strIdFromZ("auto"));
+        hrnCfgArgKeyRawStrId(argList, cfgOptRepoAzureKeyType, 1, strIdFromZ("auto"));
         hrnCfgEnvKeyRawZ(cfgOptRepoAzureAccount, 1, "account");
         strLstAddZ(argList, TEST_COMMAND_BACKUP);
         // Should not throw OptionRequiredError for repo1-azure-key when key-type is auto
