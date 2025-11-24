@@ -215,7 +215,8 @@ storageAzureAuth(
         {
             const time_t timeBegin = time(NULL);
 
-            if (timeBegin >= this->accessTokenExpirationTime)
+            // Fetch token if expired or not yet set
+            if (this->accessToken == NULL || timeBegin >= this->accessTokenExpirationTime)
             {
                 // Retrieve the access token via the Managed Identities endpoint
                 HttpHeader *const authHeader = httpHeaderNew(NULL);
@@ -260,6 +261,9 @@ storageAzureAuth(
                     httpRequestError(request, response);
                 }
             }
+
+            // Ensure access token is available
+            CHECK(AssertError, this->accessToken != NULL, "access token not available");
 
             // Generate authorization header with Bearer prefix
             const String *const accessTokenHeaderValue = strNewFmt("Bearer %s", strZ(this->accessToken));
