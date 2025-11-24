@@ -636,7 +636,9 @@ testRun(void)
                     "*** Request Headers ***:\n"
                     "Metadata: true\n"
                     "content-length: 0\n"
-                    "host: %s",
+                    "host: %s\n"
+                    "*** Response Headers ***:\n"
+                    "content-length: 0",
                     strZ(hrnServerHost()));
 
                 hrnServerScriptClose(credService);
