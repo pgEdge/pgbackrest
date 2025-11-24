@@ -491,7 +491,7 @@ testRun(void)
         TEST_RESULT_PTR(storage->sharedKey, NULL, "check shared key is null");
         TEST_RESULT_PTR(storage->sasKey, NULL, "check sas key is null");
         TEST_RESULT_PTR(storage->accessToken, NULL, "check access token is initially null");
-        TEST_RESULT_UINT(storage->accessTokenExpirationTime, 0, "check access token expiration is initially 0");
+        TEST_RESULT_INT(storage->accessTokenExpirationTime, 0, "check access token expiration is initially 0");
     }
 
     // *****************************************************************************************************************************
@@ -565,7 +565,7 @@ testRun(void)
                     storageAzureAuth(storage, HTTP_VERB_GET_STR, STRDEF("/path"), NULL, dateTime, header), "auth with token fetch");
                 TEST_RESULT_PTR_NE(storage->accessToken, NULL, "check access token was set");
                 TEST_RESULT_STR_Z(storage->accessToken, "test-access-token-12345", "check access token value");
-                TEST_RESULT_UINT(storage->accessTokenExpirationTime > 0, true, "check expiration time was set");
+                TEST_RESULT_BOOL(storage->accessTokenExpirationTime > 0, true, "check expiration time was set");
 
                 TEST_RESULT_VOID(FUNCTION_LOG_OBJECT_FORMAT(header, httpHeaderToLog, logBuf, sizeof(logBuf)), "httpHeaderToLog");
                 TEST_RESULT_Z(
