@@ -504,7 +504,7 @@ testRun(void)
 
             HRN_FORK_CHILD_BEGIN(.prefix = "azure metadata server", .timeout = 5000)
             {
-                TEST_RESULT_VOID(hrnServerRunP(HRN_FORK_CHILD_READ(), hrnServerProtocolPlain, credPort), "metadata server");
+                TEST_RESULT_VOID(hrnServerRunP(HRN_FORK_CHILD_READ(), hrnServerProtocolSocket, credPort), "metadata server");
             }
             HRN_FORK_CHILD_END();
 
