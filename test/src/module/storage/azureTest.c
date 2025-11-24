@@ -617,6 +617,7 @@ testRun(void)
 
                 tokenResponse = strNewZ(
                     "HTTP/1.1 403 Forbidden\r\n"
+                    "connection:close\r\n"
                     "content-length:0\r\n"
                     "\r\n");
                 hrnServerScriptReply(credService, tokenResponse);
@@ -633,11 +634,12 @@ testRun(void)
                     "*** Path/Query ***:\n"
                     "GET /metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%%3A%%2F%%2Faccount.blob.core.windows.net\n"
                     "*** Request Headers ***:\n"
+                    "Metadata: true\n"
                     "content-length: 0\n"
-                    "host: %s\n"
-                    "Metadata: true",
+                    "host: %s",
                     strZ(hrnServerHost()));
 
+                hrnServerScriptClose(credService);
                 hrnServerScriptEnd(credService);
             }
             HRN_FORK_PARENT_END();
