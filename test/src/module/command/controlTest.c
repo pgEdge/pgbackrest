@@ -327,6 +327,23 @@ testRun(void)
             HRN_FORK_PARENT_END();
         }
         HRN_FORK_END();
+
+        // -------------------------------------------------------------------------------------------------------------------------
+        TEST_TITLE("unlocked lock file silently skipped (process terminated quickly)");
+
+        HRN_STORAGE_REMOVE(hrnStorage, "lock/db" STOP_FILE_EXT, .errorOnMissing = true, .comment = "remove stanza stop file");
+
+        // Create an empty lock file that is not locked by any process
+        // This simulates a lock file from a process that terminated quickly after receiving a term signal
+        // When cmdStop() tries to read it, lockRead() will be able to acquire the lock (because no process holds it),
+        // which means it will return lockReadStatusUnlocked and should be silently skipped without warning
+        HRN_STORAGE_PUT_EMPTY(hrnStorage, "lock/db-archive" LOCK_FILE_EXT, .comment = "create empty unlocked lock file");
+
+        // Call cmdStop() - the unlocked lock file should be silently skipped without warning
+        TEST_RESULT_VOID(cmdStop(), "stanza, create stop file, force - unlocked lock file silently skipped");
+
+        // Verify stop file was created successfully (no errors occurred and no warnings about the unlocked file)
+        TEST_STORAGE_EXISTS(hrnStorage, "lock/db" STOP_FILE_EXT, .comment = "stanza stop file created");
     }
 
     // *****************************************************************************************************************************

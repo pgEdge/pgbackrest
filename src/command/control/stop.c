@@ -64,7 +64,12 @@ cmdStop(void)
                     // Read the lock file
                     const LockReadResult lockResult = lockReadP(lockFile, .remove = true);
 
-                    // If we cannot read the lock file for any reason then warn and continue to next file
+                    // If the lock file is unlocked, the process has already terminated (possibly from a term signal we just sent)
+                    // This is expected behavior, so silently skip it
+                    if (lockResult.status == lockReadStatusUnlocked)
+                        continue;
+
+                    // If we cannot read the lock file for any other reason then warn and continue to next file
                     if (lockResult.status != lockReadStatusValid)
                     {
                         LOG_WARN_FMT("unable to read lock file %s/%s", strZ(lockPath), strZ(lockFile));
