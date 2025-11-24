@@ -383,7 +383,6 @@ testRun(void)
             hrnStorage, "lock", "db-junk.txt\ndb" STOP_FILE_EXT "\n" "db1-backup" LOCK_FILE_EXT "\n",
             .comment = "stop file created, stanza lock file was removed, other stanza lock and other files remain");
         HRN_STORAGE_PATH_REMOVE(hrnStorage, "lock", .recurse = true, .errorOnMissing = true, .comment = "remove the lock path");
-
     }
 
     FUNCTION_HARNESS_RETURN_VOID();
