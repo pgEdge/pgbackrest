@@ -1282,6 +1282,37 @@ testRun(void)
             cfgParseP(storageTest, strLstSize(argList), strLstPtr(argList), .noResetLogLevel = true), OptionInvalidError,
             "option 'repo1-block' not valid without option 'repo1-bundle'");
 
+        // -------------------------------------------------------------------------------------------------------------------------
+        TEST_TITLE("repo azure key optional for auto key type");
+
+        argList = strLstNew();
+        strLstAddZ(argList, TEST_BACKREST_EXE);
+        hrnCfgArgRawZ(argList, cfgOptPgPath, "/path/to/db");
+        hrnCfgArgRawZ(argList, cfgOptStanza, "db");
+        hrnCfgArgKeyRawZ(argList, cfgOptRepoType, 1, "azure");
+        hrnCfgArgKeyRawZ(argList, cfgOptRepoAzureAccount, 1, "account");
+        hrnCfgArgKeyRawZ(argList, cfgOptRepoAzureContainer, 1, "container");
+        hrnCfgArgKeyRawZ(argList, cfgOptRepoPath, 1, "/repo");
+        strLstAddZ(argList, TEST_COMMAND_BACKUP);
+        TEST_ERROR(
+            cfgParseP(storageTest, strLstSize(argList), strLstPtr(argList), .noResetLogLevel = true), OptionRequiredError,
+            "backup command requires option: repo1-azure-key");
+
+        argList = strLstNew();
+        strLstAddZ(argList, TEST_BACKREST_EXE);
+        hrnCfgArgRawZ(argList, cfgOptPgPath, "/path/to/db");
+        hrnCfgArgRawZ(argList, cfgOptStanza, "db");
+        hrnCfgArgKeyRawZ(argList, cfgOptRepoType, 1, "azure");
+        hrnCfgArgKeyRawZ(argList, cfgOptRepoAzureAccount, 1, "account");
+        hrnCfgArgKeyRawZ(argList, cfgOptRepoAzureContainer, 1, "container");
+        hrnCfgArgKeyRawZ(argList, cfgOptRepoPath, 1, "/repo");
+        hrnCfgArgKeyRawZ(argList, cfgOptRepoAzureKeyType, 1, "auto");
+        strLstAddZ(argList, TEST_COMMAND_BACKUP);
+        TEST_RESULT_VOID(
+            cfgParseP(storageTest, strLstSize(argList), strLstPtr(argList), .noResetLogLevel = true),
+            "allow managed identity without repo key");
+        TEST_RESULT_BOOL(cfgOptionTest(cfgOptRepoAzureKey), false, "repo-azure-key not set for auto key type");
+
         argList = strLstNew();
         strLstAddZ(argList, TEST_BACKREST_EXE);
         hrnCfgArgRawZ(argList, cfgOptPgPath, "/path/to/db");

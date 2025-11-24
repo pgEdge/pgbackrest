@@ -3,6 +3,8 @@ Test Azure Storage
 ***********************************************************************************************************************************/
 #include "common/io/fdRead.h"
 #include "common/io/fdWrite.h"
+#include "common/io/http/client.h"
+#include "common/io/http/query.h"
 #include "storage/helper.h"
 
 #include "common/harnessConfig.h"
@@ -112,6 +114,25 @@ testRequest(IoWrite *write, const char *verb, const char *path, TestRequestParam
         strCatZ(request, param.content);
 
     hrnServerScriptExpect(write, request);
+}
+
+/***********************************************************************************************************************************
+Helper to build managed identity token requests
+***********************************************************************************************************************************/
+static String *
+testAzureTokenRequest(const StorageAzure *const storage, const String *const host)
+{
+    HttpQuery *const query = httpQueryNewP();
+    httpQueryAdd(query, STRDEF("api-version"), STRDEF("2018-02-01"));
+    httpQueryAdd(query, STRDEF("resource"), strNewFmt("https://%s", strZ(storage->host)));
+
+    return strNewFmt(
+        "GET /metadata/identity/oauth2/token?%s HTTP/1.1\r\n"
+        "user-agent:%s/%s\r\n"
+        "metadata:true\r\n"
+        "host:%s\r\n"
+        "\r\n",
+        strZ(httpQueryRenderP(query)), PROJECT_NAME, PROJECT_VERSION, strZ(host));
 }
 
 /***********************************************************************************************************************************
@@ -486,6 +507,114 @@ testRun(void)
             "check headers");
         TEST_RESULT_STR(
             httpHeaderGet(header, HTTP_HEADER_AUTHORIZATION_STR), STRDEF("Bearer test-access-token"), "check authorization");
+
+        // -------------------------------------------------------------------------------------------------------------------------
+        TEST_TITLE("auto auth fetches managed identity token");
+
+        HRN_FORK_BEGIN()
+        {
+            const unsigned int testPortAuth = hrnServerPortNext();
+
+            HRN_FORK_CHILD_BEGIN(.prefix = "azure auth server", .timeout = 5000)
+            {
+                TEST_RESULT_VOID(hrnServerRunP(HRN_FORK_CHILD_READ(), hrnServerProtocolSocket, testPortAuth), "azure auth server");
+            }
+            HRN_FORK_CHILD_END();
+
+            HRN_FORK_PARENT_BEGIN(.prefix = "azure auth client")
+            {
+                IoWrite *auth = hrnServerScriptBegin(HRN_FORK_PARENT_WRITE(0));
+
+                TEST_ASSIGN(
+                    storage,
+                    (StorageAzure *)storageDriver(
+                        storageAzureNew(
+                            STRDEF("/repo"), false, 0, NULL, TEST_CONTAINER_STR, TEST_ACCOUNT_STR, storageAzureKeyTypeAuto, NULL, 16,
+                            NULL, STRDEF("blob.core.windows.net"), storageAzureUriStyleHost, 443, 1000, true, NULL, NULL)),
+                    "managed identity azure storage");
+
+                storage->credHost = hrnServerHost();
+                storage->credHttpClient =
+                    httpClientNew(sckClientNew(hrnServerHost(), testPortAuth, 5000, 5000), 5000);
+                storage->accessTokenExpirationTime = 0;
+                strFree(storage->accessToken);
+                storage->accessToken = NULL;
+
+                // Fetch token successfully
+                hrnServerScriptAccept(auth);
+
+                String *request = testAzureTokenRequest(storage, hrnServerHost());
+                hrnServerScriptExpect(auth, request);
+                strFree(request);
+
+                const char *tokenJson = "{\"access_token\":\"mi-token\",\"expires_in\":\"60\"}";
+                hrnServerScriptReply(
+                    auth, strNewFmt("HTTP/1.1 200 OK\r\ncontent-length:%zu\r\n\r\n%s", strlen(tokenJson), tokenJson));
+
+                header = httpHeaderAdd(httpHeaderNew(storage->headerRedactList), HTTP_HEADER_CONTENT_LENGTH_STR, ZERO_STR);
+                TEST_RESULT_VOID(storageAzureAuth(storage, HTTP_VERB_GET_STR, STRDEF("/path"), NULL, dateTime, header), "fetch token");
+                TEST_RESULT_STR(
+                    httpHeaderGet(header, HTTP_HEADER_AUTHORIZATION_STR), STRDEF("Bearer mi-token"), "token applied");
+
+                // Missing token in response
+                storage->accessTokenExpirationTime = 0;
+                strFree(storage->accessToken);
+                storage->accessToken = NULL;
+
+                hrnServerScriptClose(auth);
+                hrnServerScriptAccept(auth);
+
+                request = testAzureTokenRequest(storage, hrnServerHost());
+                hrnServerScriptExpect(auth, request);
+                strFree(request);
+
+                const char *missingTokenJson = "{\"expires_in\":\"60\"}";
+                hrnServerScriptReply(
+                    auth,
+                    strNewFmt("HTTP/1.1 200 OK\r\ncontent-length:%zu\r\n\r\n%s", strlen(missingTokenJson), missingTokenJson));
+
+                header = httpHeaderAdd(httpHeaderNew(NULL), HTTP_HEADER_CONTENT_LENGTH_STR, ZERO_STR);
+                TEST_ERROR(
+                    storageAzureAuth(storage, HTTP_VERB_GET_STR, STRDEF("/path"), NULL, dateTime, header), FormatError,
+                    "access token missing");
+
+                // HTTP error when requesting token
+                storage->accessTokenExpirationTime = 0;
+                strFree(storage->accessToken);
+                storage->accessToken = NULL;
+
+                hrnServerScriptClose(auth);
+                hrnServerScriptAccept(auth);
+
+                request = testAzureTokenRequest(storage, hrnServerHost());
+                hrnServerScriptExpect(auth, request);
+                strFree(request);
+
+                hrnServerScriptReply(
+                    auth, STRDEF("HTTP/1.1 500 Internal Server Error\r\ncontent-length:0\r\n\r\n"));
+
+                HttpQuery *const tokenQuery = httpQueryNewP();
+                httpQueryAdd(tokenQuery, STRDEF("api-version"), STRDEF("2018-02-01"));
+                httpQueryAdd(tokenQuery, STRDEF("resource"), strNewFmt("https://%s", strZ(storage->host)));
+                String *const tokenQueryRender = httpQueryRenderP(tokenQuery);
+
+                header = httpHeaderAdd(httpHeaderNew(NULL), HTTP_HEADER_CONTENT_LENGTH_STR, ZERO_STR);
+                TEST_ERROR_FMT(
+                    storageAzureAuth(storage, HTTP_VERB_GET_STR, STRDEF("/path"), NULL, dateTime, header), ProtocolError,
+                    "HTTP request failed with 500:\n"
+                    "*** Path/Query ***:\n"
+                    "GET /metadata/identity/oauth2/token?%s\n"
+                    "*** Request Headers ***:\n"
+                    "content-length: 0\n"
+                    "host: %s\n"
+                    "metadata: true",
+                    strZ(tokenQueryRender), strZ(hrnServerHost()));
+
+                hrnServerScriptEnd(auth);
+            }
+            HRN_FORK_PARENT_END();
+        }
+        HRN_FORK_END();
     }
 
     // *****************************************************************************************************************************
