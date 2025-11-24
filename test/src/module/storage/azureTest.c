@@ -617,10 +617,10 @@ testRun(void)
 
                 tokenResponse = strNewZ(
                     "HTTP/1.1 403 Forbidden\r\n"
-                    "connection:close\r\n"
                     "content-length:0\r\n"
                     "\r\n");
                 hrnServerScriptReply(credService, tokenResponse);
+                hrnServerScriptClose(credService);
 
                 // Set expiration time to 0 to force token fetch
                 storage->accessTokenExpirationTime = 0;
@@ -641,7 +641,6 @@ testRun(void)
                     "content-length: 0",
                     strZ(hrnServerHost()));
 
-                hrnServerScriptClose(credService);
                 hrnServerScriptEnd(credService);
             }
             HRN_FORK_PARENT_END();
