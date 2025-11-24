@@ -499,7 +499,6 @@ testRun(void)
     {
         HRN_FORK_BEGIN()
         {
-            const unsigned int testPort = hrnServerPortNext();
             const unsigned int credPort = hrnServerPortNext();
 
             HRN_FORK_CHILD_BEGIN(.prefix = "azure metadata server", .timeout = 5000)
