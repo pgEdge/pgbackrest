@@ -527,6 +527,8 @@ testRun(void)
                 // Note: In real usage, this would connect to 169.254.169.254:80, but for testing we use our mock server
                 // The old client will be freed when the storage object is freed
                 storage->credHttpClient = httpClientNew(sckClientNew(hrnServerHost(), credPort, 1000, 1000), 1000);
+                // Update credHost to match test server host since we're using a mock server
+                storage->credHost = hrnServerHost();
 
                 // -----------------------------------------------------------------------------------------------------------------
                 TEST_TITLE("Managed Identity auth - fetch token");
@@ -536,7 +538,7 @@ testRun(void)
                 String *credRequest = strNew();
                 strCatZ(
                     credRequest,
-                    "GET /metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://account.blob.core.windows.net HTTP/1.1\r\n");
+                    "GET /metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Faccount.blob.core.windows.net HTTP/1.1\r\n");
                 strCatFmt(credRequest, "user-agent:%s/%s\r\n", PROJECT_NAME, PROJECT_VERSION);
                 strCatFmt(credRequest, "Metadata:true\r\n");
                 strCatFmt(credRequest, "host:%s\r\n", strZ(hrnServerHost()));
@@ -605,7 +607,7 @@ testRun(void)
                 credRequest = strNew();
                 strCatZ(
                     credRequest,
-                    "GET /metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://account.blob.core.windows.net HTTP/1.1\r\n");
+                    "GET /metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Faccount.blob.core.windows.net HTTP/1.1\r\n");
                 strCatFmt(credRequest, "user-agent:%s/%s\r\n", PROJECT_NAME, PROJECT_VERSION);
                 strCatFmt(credRequest, "Metadata:true\r\n");
                 strCatFmt(credRequest, "host:%s\r\n", strZ(hrnServerHost()));
@@ -629,7 +631,7 @@ testRun(void)
                     storageAzureAuth(storage, HTTP_VERB_GET_STR, STRDEF("/path"), NULL, dateTime, header), ProtocolError,
                     "HTTP request failed with 403 (Forbidden):\n"
                     "*** Path/Query ***:\n"
-                    "GET /metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://account.blob.core.windows.net\n"
+                    "GET /metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%%3A%%2F%%2Faccount.blob.core.windows.net\n"
                     "*** Request Headers ***:\n"
                     "content-length: 0\n"
                     "host: %s\n"
