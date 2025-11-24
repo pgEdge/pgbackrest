@@ -526,7 +526,7 @@ testRun(void)
 
                 // Override cred http client to point to our test server
                 // Note: In real usage, this would connect to 169.254.169.254:80, but for testing we use our mock server
-                httpClientFree(storage->credHttpClient);
+                // The old client will be freed when the storage object is freed
                 storage->credHttpClient = httpClientNew(sckClientNew(hrnServerHost(), credPort, 1000, 1000), 1000);
 
                 // -----------------------------------------------------------------------------------------------------------------
@@ -539,7 +539,7 @@ testRun(void)
                     credRequest,
                     "GET /metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://account.blob.core.windows.net HTTP/1.1\r\n");
                 strCatFmt(credRequest, "user-agent:%s/%s\r\n", PROJECT_NAME, PROJECT_VERSION);
-                strCatFmt(credRequest, "metadata:true\r\n");
+                strCatFmt(credRequest, "Metadata:true\r\n");
                 strCatFmt(credRequest, "host:%s\r\n", strZ(hrnServerHost()));
                 strCatZ(credRequest, "content-length:0\r\n");
                 strCatZ(credRequest, "\r\n");
@@ -622,7 +622,7 @@ testRun(void)
 
                 // Set expiration time to 0 to force token fetch
                 storage->accessTokenExpirationTime = 0;
-                strFree(&storage->accessToken);
+                storage->accessToken = NULL;
 
                 header = httpHeaderAdd(httpHeaderNew(NULL), HTTP_HEADER_CONTENT_LENGTH_STR, ZERO_STR);
 
