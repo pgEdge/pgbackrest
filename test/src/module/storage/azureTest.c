@@ -518,8 +518,8 @@ testRun(void)
                     storage,
                     (StorageAzure *)storageDriver(
                         storageAzureNew(
-                            STRDEF("/repo"), false, 0, NULL, TEST_CONTAINER_STR, TEST_ACCOUNT_STR, storageAzureKeyTypeAuto, NULL, 16,
-                            NULL, STRDEF("blob.core.windows.net"), storageAzureUriStyleHost, 443, 1000, true, NULL,
+                            STRDEF("/repo"), false, 0, NULL, TEST_CONTAINER_STR, TEST_ACCOUNT_STR, storageAzureKeyTypeAuto, NULL,
+                            16, NULL, STRDEF("blob.core.windows.net"), storageAzureUriStyleHost, 443, 1000, true, NULL,
                             NULL)),
                     "new azure storage - auto key type");
 
@@ -538,7 +538,8 @@ testRun(void)
                 String *credRequest = strNew();
                 strCatZ(
                     credRequest,
-                    "GET /metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Faccount.blob.core.windows.net HTTP/1.1\r\n");
+                    "GET /metadata/identity/oauth2/token?api-version=2018-02-01&resource="
+                    "https%3A%2F%2Faccount.blob.core.windows.net HTTP/1.1\r\n");
                 strCatFmt(credRequest, "user-agent:%s/%s\r\n", PROJECT_NAME, PROJECT_VERSION);
                 strCatFmt(credRequest, "Metadata:true\r\n");
                 strCatZ(credRequest, "content-length:0\r\n");
@@ -607,7 +608,8 @@ testRun(void)
                 credRequest = strNew();
                 strCatZ(
                     credRequest,
-                    "GET /metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Faccount.blob.core.windows.net HTTP/1.1\r\n");
+                    "GET /metadata/identity/oauth2/token?api-version=2018-02-01&resource="
+                    "https%3A%2F%2Faccount.blob.core.windows.net HTTP/1.1\r\n");
                 strCatFmt(credRequest, "user-agent:%s/%s\r\n", PROJECT_NAME, PROJECT_VERSION);
                 strCatFmt(credRequest, "Metadata:true\r\n");
                 strCatZ(credRequest, "content-length:0\r\n");
@@ -632,7 +634,8 @@ testRun(void)
                     storageAzureAuth(storage, HTTP_VERB_GET_STR, STRDEF("/path"), NULL, dateTime, header), ProtocolError,
                     "HTTP request failed with 403 (Forbidden):\n"
                     "*** Path/Query ***:\n"
-                    "GET /metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%%3A%%2F%%2Faccount.blob.core.windows.net\n"
+                    "GET /metadata/identity/oauth2/token?api-version=2018-02-01&resource="
+                    "https%%3A%%2F%%2Faccount.blob.core.windows.net\n"
                     "*** Request Headers ***:\n"
                     "Metadata: true\n"
                     "content-length: 0\n"
