@@ -2182,6 +2182,12 @@ option:
 
   repo-azure-key:
     inherit: repo-azure-account
+    required: false
+    depend:
+      option: repo-azure-key-type
+      list:
+        - shared
+        - sas
 
   repo-azure-key-type:
     inherit: repo-azure-container

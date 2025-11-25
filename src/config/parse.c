@@ -2753,22 +2753,6 @@ cfgParse(const Storage *const storage, const unsigned int argListSize, const cha
                             if (required && dependResult.dependId != 0 && !dependResult.valid)
                                 required = false;
 
-                            // Azure repo key is not required when key type is auto (Managed Identity)
-                            if (required && optionId == cfgOptRepoAzureKey)
-                            {
-                                // Check if key-type option has been processed and index is valid
-                                if (config->option[cfgOptRepoAzureKeyType].index != NULL)
-                                {
-                                    const ConfigOptionValue *const keyTypeValue =
-                                        &config->option[cfgOptRepoAzureKeyType].index[optionListIdx];
-
-                                    if (keyTypeValue->set &&
-                                        keyTypeValue->value.stringId == CFGOPTVAL_REPO_AZURE_KEY_TYPE_AUTO)
-                                    {
-                                        required = false;
-                                    }
-                                }
-                            }
 
                             if (required)
                             {
