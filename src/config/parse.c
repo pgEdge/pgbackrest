@@ -2753,7 +2753,6 @@ cfgParse(const Storage *const storage, const unsigned int argListSize, const cha
                             if (required && dependResult.dependId != 0 && !dependResult.valid)
                                 required = false;
 
-
                             if (required)
                             {
                                 THROW_FMT(

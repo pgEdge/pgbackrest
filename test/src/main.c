@@ -62,42 +62,42 @@ main(int argListSize, const char *argList[])
         {
             // Test
             // -----------------------------------------------------------------------------------------------------------------
-            case cfgCmdTest:
-            {
-                // Run a single test
-                if (cfgOptionTest(cfgOptVmId))
-                {
-                    cmdTest(
-                        cfgOptionStr(cfgOptRepoPath), cfgOptionStr(cfgOptTestPath), cfgOptionStr(cfgOptVm),
-                        cfgOptionUInt(cfgOptVmId), cfgOptionStr(cfgOptPgVersion), strLstGet(cfgCommandParam(), 0),
-                        cfgOptionTest(cfgOptTest) ? cfgOptionUInt(cfgOptTest) : 0, cfgOptionUInt64(cfgOptScale),
-                        logLevelEnum(cfgOptionStrId(cfgOptLogLevelTest)), cfgOptionBool(cfgOptLogTimestamp),
-                        cfgOptionStrNull(cfgOptTz), cfgOptionStrNull(cfgOptVmArch), cfgOptionBool(cfgOptCoverage),
-                        cfgOptionBool(cfgOptProfile), cfgOptionBool(cfgOptOptimize), cfgOptionBool(cfgOptBackTrace));
-                }
-                // Top-level test
-                else
-                {
-                    result = testCvgGenerate(
-                        cfgOptionStr(cfgOptRepoPath), cfgOptionStr(cfgOptTestPath), cfgOptionStr(cfgOptVm),
-                        cfgOptionBool(cfgOptCoverageSummary), cfgCommandParam()) > 0;
-                }
+            case cfgCmdTest :
+                    {
+                        // Run a single test
+                        if (cfgOptionTest(cfgOptVmId))
+                        {
+                            cmdTest(
+                                cfgOptionStr(cfgOptRepoPath), cfgOptionStr(cfgOptTestPath), cfgOptionStr(cfgOptVm),
+                                cfgOptionUInt(cfgOptVmId), cfgOptionStr(cfgOptPgVersion), strLstGet(cfgCommandParam(), 0),
+                                cfgOptionTest(cfgOptTest) ? cfgOptionUInt(cfgOptTest) : 0, cfgOptionUInt64(cfgOptScale),
+                                logLevelEnum(cfgOptionStrId(cfgOptLogLevelTest)), cfgOptionBool(cfgOptLogTimestamp),
+                                cfgOptionStrNull(cfgOptTz), cfgOptionStrNull(cfgOptVmArch), cfgOptionBool(cfgOptCoverage),
+                                cfgOptionBool(cfgOptProfile), cfgOptionBool(cfgOptOptimize), cfgOptionBool(cfgOptBackTrace));
+                        }
+                        // Top-level test
+                        else
+                        {
+                            result = testCvgGenerate(
+                                cfgOptionStr(cfgOptRepoPath), cfgOptionStr(cfgOptTestPath), cfgOptionStr(cfgOptVm),
+                                cfgOptionBool(cfgOptCoverageSummary), cfgCommandParam()) > 0;
+                        }
 
-                break;
-            }
+                        break;
+                    }
 
-            // Help/version
-            // -----------------------------------------------------------------------------------------------------------------
-            case cfgCmdHelp:
-            case cfgCmdVersion:
-                cmdHelp(BUF(helpData, sizeof(helpData)));
-                break;
+                        // Help/version
+                        // -----------------------------------------------------------------------------------------------------------------
+                        case cfgCmdHelp:
+                        case cfgCmdVersion:
+                            cmdHelp(BUF(helpData, sizeof(helpData)));
+                            break;
 
-            // Error on commands that should have been handled
-            // -----------------------------------------------------------------------------------------------------------------
-            case cfgCmdNoop:
-                THROW_FMT(AssertError, "'%s' command should have been handled", cfgCommandName());
-                break;
+                        // Error on commands that should have been handled
+                        // -----------------------------------------------------------------------------------------------------------------
+                        case cfgCmdNoop:
+                            THROW_FMT(AssertError, "'%s' command should have been handled", cfgCommandName());
+                            break;
         }
     }
     CATCH_FATAL()
