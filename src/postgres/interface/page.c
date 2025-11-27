@@ -79,12 +79,12 @@ pgPageChecksum(uint8_t *const page, const uint32_t blockNo, const PgPageSize pag
     // Main checksum calculation
     switch (pageSize)
     {
-    CHECKSUM_CASE(pgPageSize8);                                     // Default page size should be checked first
-    CHECKSUM_CASE(pgPageSize1);
-    CHECKSUM_CASE(pgPageSize2);
-    CHECKSUM_CASE(pgPageSize4);
-    CHECKSUM_CASE(pgPageSize16);
-    CHECKSUM_CASE(pgPageSize32);
+        CHECKSUM_CASE(pgPageSize8);                                 // Default page size should be checked first
+        CHECKSUM_CASE(pgPageSize1);
+        CHECKSUM_CASE(pgPageSize2);
+        CHECKSUM_CASE(pgPageSize4);
+        CHECKSUM_CASE(pgPageSize16);
+        CHECKSUM_CASE(pgPageSize32);
 
         default:
             pgPageSizeCheck(pageSize);
