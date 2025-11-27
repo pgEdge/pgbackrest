@@ -87,12 +87,17 @@ https://en.wikipedia.org/wiki/Logjam_(computer_security).
 #define DH_2048                                                                                                                    \
     "-----BEGIN DH PARAMETERS-----\n"                                                                                              \
     "MIIBCAKCAQEA///////////JD9qiIWjCNMTGYouA3BzRKQJOCIpnzHQCC76mOxOb\n"                                                           \
-    "IlFKCHmONATd75UZs806QxswKwpt8l8UN0/hNW1tUcJF5IW1dmJefsb0TELppjft\n"                                                           \
-    "awv/XLb0Brft7jhr+1qJn6WunyQRfEsf5kkoZlHs5Fs9wgB8uKFjvwWY2kg2HFXT\n"                                                           \
-    "mmkWP6j9JM9fg2VdI9yjrZYcYvNWIIVSu57VKQdwlpZtZww1Tkq8mATxdGwIyhgh\n"                                                           \
-    "fDKQXkYuNs474553LBgOhgObJ4Oi7Aeij7XFXfBvTFLJ3ivL9pVYFxg5lUl86pVq\n"                                                           \
-    "5RXSJhiY+gUQFXKOWoqsqmj//////////wIBAg==\n"                                                                                   \
-    "-----END DH PARAMETERS-----"
+                 //     "IlFKCHmONATd75UZs806QxswKwpt8l8UN0/hNW1tUcJF5IW1dmJefsb0TELppjft\n"
+//                                                           \
+//     "awv/XLb0Brft7jhr+1qJn6WunyQRfEsf5kkoZlHs5Fs9wgB8uKFjvwWY2kg2HFXT\n"
+//                                                           \
+//     "mmkWP6j9JM9fg2VdI9yjrZYcYvNWIIVSu57VKQdwlpZtZww1Tkq8mATxdGwIyhgh\n"
+//                                                           \
+//     "fDKQXkYuNs474553LBgOhgObJ4Oi7Aeij7XFXfBvTFLJ3ivL9pVYFxg5lUl86pVq\n"
+//                                                           \
+//     "5RXSJhiY+gUQFXKOWoqsqmj//////////wIBAg==\n"
+//                                                                                   \
+//     "-----END DH PARAMETERS-----"
 // {uncrustify_on}
 
 static void

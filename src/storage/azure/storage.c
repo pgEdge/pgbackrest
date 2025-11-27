@@ -920,12 +920,14 @@ storageAzureNew(
                     sckClientNew(this->credHost, AZURE_CREDENTIAL_PORT, timeout, timeout), timeout);
                 break;
             }
+
             // Store shared key or parse sas query
             case storageAzureKeyTypeShared:
             {
                 this->sharedKey = bufNewDecode(encodingBase64, key);
                 break;
             }
+
             case storageAzureKeyTypeSas:
             {
                 this->sasKey = httpQueryNewStr(key);

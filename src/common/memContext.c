@@ -109,33 +109,36 @@ static const uint8_t memContextSizePossible[memQtyMany + 1][memQtyMany + 1][memQ
 {
     // child none
     {// alloc none
-     {/* callback none */ 0, /* callback one */ sizeof(MemContextCallbackOne)},
-     // alloc one
-     {/* callback none */ sizeof(MemContextAllocOne),
-      /* callback one */ sizeof(MemContextAllocOne) + sizeof(MemContextCallbackOne)},
-     // alloc many
-     {/* callback none */ sizeof(MemContextAllocMany),
-      /* callback one */ sizeof(MemContextAllocMany) + sizeof(MemContextCallbackOne)}},
+        { /* callback none */ 0, /* callback one */ sizeof(MemContextCallbackOne)},
+        // alloc one
+        { /* callback none */ sizeof(MemContextAllocOne),
+                              /* callback one */ sizeof(MemContextAllocOne) + sizeof(MemContextCallbackOne)},
+        // alloc many
+        { /* callback none */ sizeof(MemContextAllocMany),
+                              /* callback one */ sizeof(MemContextAllocMany) + sizeof(MemContextCallbackOne)}
+    },
     // child one
     {// alloc none
-     {/* callback none */ sizeof(MemContextChildOne),
-      /* callback one */ sizeof(MemContextChildOne) + sizeof(MemContextCallbackOne)},
-     // alloc one
-     {/* callback none */ sizeof(MemContextChildOne) + sizeof(MemContextAllocOne),
-      /* callback one */ sizeof(MemContextChildOne) + sizeof(MemContextAllocOne) + sizeof(MemContextCallbackOne)},
-     // alloc many
-     {/* callback none */ sizeof(MemContextChildOne) + sizeof(MemContextAllocMany),
-      /* callback one */ sizeof(MemContextChildOne) + sizeof(MemContextAllocMany) + sizeof(MemContextCallbackOne)}},
+        { /* callback none */ sizeof(MemContextChildOne),
+                              /* callback one */ sizeof(MemContextChildOne) + sizeof(MemContextCallbackOne)},
+        // alloc one
+        { /* callback none */ sizeof(MemContextChildOne) + sizeof(MemContextAllocOne),
+                              /* callback one */ sizeof(MemContextChildOne) + sizeof(MemContextAllocOne) + sizeof(MemContextCallbackOne)},
+        // alloc many
+        { /* callback none */ sizeof(MemContextChildOne) + sizeof(MemContextAllocMany),
+                              /* callback one */ sizeof(MemContextChildOne) + sizeof(MemContextAllocMany) + sizeof(MemContextCallbackOne)}
+    },
     // child many
     {// alloc none
-     {/* callback none */ sizeof(MemContextChildMany),
-      /* callback one */ sizeof(MemContextChildMany) + sizeof(MemContextCallbackOne)},
-     // alloc one
-     {/* callback none */ sizeof(MemContextChildMany) + sizeof(MemContextAllocOne),
-      /* callback one */ sizeof(MemContextChildMany) + sizeof(MemContextAllocOne) + sizeof(MemContextCallbackOne)},
-     // alloc many
-     {/* callback none */ sizeof(MemContextChildMany) + sizeof(MemContextAllocMany),
-      /* callback one */ sizeof(MemContextChildMany) + sizeof(MemContextAllocMany) + sizeof(MemContextCallbackOne)}},
+        { /* callback none */ sizeof(MemContextChildMany),
+                              /* callback one */ sizeof(MemContextChildMany) + sizeof(MemContextCallbackOne)},
+        // alloc one
+        { /* callback none */ sizeof(MemContextChildMany) + sizeof(MemContextAllocOne),
+                              /* callback one */ sizeof(MemContextChildMany) + sizeof(MemContextAllocOne) + sizeof(MemContextCallbackOne)},
+        // alloc many
+        { /* callback none */ sizeof(MemContextChildMany) + sizeof(MemContextAllocMany),
+                              /* callback one */ sizeof(MemContextChildMany) + sizeof(MemContextAllocMany) + sizeof(MemContextCallbackOne)}
+    },
 };
 // {uncrustify_on}
 

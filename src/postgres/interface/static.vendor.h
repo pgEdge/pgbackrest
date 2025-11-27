@@ -41,6 +41,7 @@ typedef uint32 TransactionId;
 
 // FLEXIBLE_ARRAY_MEMBER macro
 // ---------------------------------------------------------------------------------------------------------------------------------
+
 /*
  * We require C99, hence the compiler should understand flexible array
  * members.  However, for documentation purposes we still consider it to be
@@ -49,7 +50,7 @@ typedef uint32 TransactionId;
  * for portability.  Don't use "offsetof(struct s, f[0])", as this doesn't
  * work with MSVC and with C++ compilers.
  */
-#define FLEXIBLE_ARRAY_MEMBER	/* empty */
+#define FLEXIBLE_ARRAY_MEMBER   /* empty */
 
 /***********************************************************************************************************************************
 Types from src/include/storage/itemid.h
@@ -57,6 +58,7 @@ Types from src/include/storage/itemid.h
 
 // ItemIdData type
 // ---------------------------------------------------------------------------------------------------------------------------------
+
 /*
  * A line pointer on a buffer page.  See buffer page definitions and comments
  * for an explanation of how line pointers are used.
@@ -67,9 +69,9 @@ Types from src/include/storage/itemid.h
  */
 typedef struct ItemIdData
 {
-	unsigned	lp_off:15,		/* offset to tuple (from start of page) */
-				lp_flags:2,		/* state of line pointer, see below */
-				lp_len:15;		/* byte length of tuple */
+    unsigned lp_off:15,         /* offset to tuple (from start of page) */
+             lp_flags:2,        /* state of line pointer, see below */
+             lp_len:15;         /* byte length of tuple */
 } ItemIdData;
 
 /***********************************************************************************************************************************
@@ -78,6 +80,7 @@ Types from src/include/storage/bufpage.h
 
 // LocationIndex type
 // ---------------------------------------------------------------------------------------------------------------------------------
+
 /*
  * location (byte offset) within a page.
  *
@@ -88,39 +91,42 @@ typedef uint16 LocationIndex;
 
 // PageXLogRecPtr type
 // ---------------------------------------------------------------------------------------------------------------------------------
+
 /*
  * For historical reasons, the 64-bit LSN value is stored as two 32-bit
  * values.
  */
 typedef struct
 {
-	uint32		xlogid;			/* high bits */
-	uint32		xrecoff;		/* low bits */
+    uint32 xlogid;              /* high bits */
+    uint32 xrecoff;             /* low bits */
 } PageXLogRecPtr;
 
 // PG_DATA_CHECKSUM_VERSION define
 // ---------------------------------------------------------------------------------------------------------------------------------
+
 /*
  * As of Release 9.3, the checksum version must also be considered when
  * handling pages.
  */
-#define PG_DATA_CHECKSUM_VERSION	1
+#define PG_DATA_CHECKSUM_VERSION    1
 
 // PageHeaderData type
 // ---------------------------------------------------------------------------------------------------------------------------------
+
 /*
  * disk page organization
  *
  * space management information generic to any page
  *
- *		pd_lsn		- identifies xlog record for last change to this page.
- *		pd_checksum - page checksum, if set.
- *		pd_flags	- flag bits.
- *		pd_lower	- offset to start of free space.
- *		pd_upper	- offset to end of free space.
- *		pd_special	- offset to start of special space.
- *		pd_pagesize_version - size in bytes and page layout version number.
- *		pd_prune_xid - oldest XID among potentially prunable tuples on page.
+ *      pd_lsn      - identifies xlog record for last change to this page.
+ *      pd_checksum - page checksum, if set.
+ *      pd_flags    - flag bits.
+ *      pd_lower    - offset to start of free space.
+ *      pd_upper    - offset to end of free space.
+ *      pd_special  - offset to start of special space.
+ *      pd_pagesize_version - size in bytes and page layout version number.
+ *      pd_prune_xid - oldest XID among potentially prunable tuples on page.
  *
  * The LSN is used by the buffer manager to enforce the basic rule of WAL:
  * "thou shalt write xlog before data".  A dirty buffer cannot be dumped
@@ -155,17 +161,17 @@ typedef struct
  */
 typedef struct PageHeaderData
 {
-	/* XXX LSN is member of *any* block, not only page-organized ones */
-	PageXLogRecPtr pd_lsn;		/* LSN: next byte after last byte of xlog
-								 * record for last change to this page */
-	uint16		pd_checksum;	/* checksum */
-	uint16		pd_flags;		/* flag bits, see below */
-	LocationIndex pd_lower;		/* offset to start of free space */
-	LocationIndex pd_upper;		/* offset to end of free space */
-	LocationIndex pd_special;	/* offset to start of special space */
-	uint16		pd_pagesize_version;
-	TransactionId pd_prune_xid; /* oldest prunable XID, or zero if none */
-	ItemIdData	pd_linp[FLEXIBLE_ARRAY_MEMBER]; /* line pointer array */
+    /* XXX LSN is member of *any* block, not only page-organized ones */
+    PageXLogRecPtr pd_lsn;      /* LSN: next byte after last byte of xlog
+                                 * record for last change to this page */
+    uint16 pd_checksum;         /* checksum */
+    uint16 pd_flags;            /* flag bits, see below */
+    LocationIndex pd_lower;     /* offset to start of free space */
+    LocationIndex pd_upper;     /* offset to end of free space */
+    LocationIndex pd_special;   /* offset to start of special space */
+    uint16 pd_pagesize_version;
+    TransactionId pd_prune_xid; /* oldest prunable XID, or zero if none */
+    ItemIdData pd_linp[FLEXIBLE_ARRAY_MEMBER];  /* line pointer array */
 } PageHeaderData;
 
 // PageHeader type
@@ -178,30 +184,31 @@ Types from src/include/access/transam.h
 
 // FirstNormalObjectId define
 // ---------------------------------------------------------------------------------------------------------------------------------
+
 /*
- *		Object ID (OID) zero is InvalidOid.
+ *      Object ID (OID) zero is InvalidOid.
  *
- *		OIDs 1-9999 are reserved for manual assignment (see .dat files in
- *		src/include/catalog/).  Of these, 8000-9999 are reserved for
- *		development purposes (such as in-progress patches and forks);
- *		they should not appear in released versions.
+ *      OIDs 1-9999 are reserved for manual assignment (see .dat files in
+ *      src/include/catalog/).  Of these, 8000-9999 are reserved for
+ *      development purposes (such as in-progress patches and forks);
+ *      they should not appear in released versions.
  *
- *		OIDs 10000-11999 are reserved for assignment by genbki.pl, for use
- *		when the .dat files in src/include/catalog/ do not specify an OID
- *		for a catalog entry that requires one.  Note that genbki.pl assigns
- *		these OIDs independently in each catalog, so they're not guaranteed
- *		to be globally unique.  Furthermore, the bootstrap backend and
- *		initdb's post-bootstrap processing can also assign OIDs in this range.
- *		The normal OID-generation logic takes care of any OID conflicts that
- *		might arise from that.
+ *      OIDs 10000-11999 are reserved for assignment by genbki.pl, for use
+ *      when the .dat files in src/include/catalog/ do not specify an OID
+ *      for a catalog entry that requires one.  Note that genbki.pl assigns
+ *      these OIDs independently in each catalog, so they're not guaranteed
+ *      to be globally unique.  Furthermore, the bootstrap backend and
+ *      initdb's post-bootstrap processing can also assign OIDs in this range.
+ *      The normal OID-generation logic takes care of any OID conflicts that
+ *      might arise from that.
  *
- *		OIDs 12000-16383 are reserved for unpinned objects created by initdb's
- *		post-bootstrap processing.  initdb forces the OID generator up to
- *		12000 as soon as it's made the pinned objects it's responsible for.
+ *      OIDs 12000-16383 are reserved for unpinned objects created by initdb's
+ *      post-bootstrap processing.  initdb forces the OID generator up to
+ *      12000 as soon as it's made the pinned objects it's responsible for.
  *
- *		OIDs beginning at 16384 are assigned from the OID generator
- *		during normal multiuser operation.  (We force the generator up to
- *		16384 as soon as we are in normal operation.)
+ *      OIDs beginning at 16384 are assigned from the OID generator
+ *      during normal multiuser operation.  (We force the generator up to
+ *      16384 as soon as we are in normal operation.)
  *
  * The choices of 8000, 10000 and 12000 are completely arbitrary, and can be
  * moved if we run low on OIDs in any category.  Changing the macros below,
@@ -216,7 +223,7 @@ Types from src/include/access/transam.h
  * reassigning OIDs that might have been assigned during initdb.  Critically,
  * it also ensures that no user-created object will be considered pinned.
  */
-#define FirstNormalObjectId		16384
+#define FirstNormalObjectId     16384
 
 /***********************************************************************************************************************************
 Types from src/include/access/xlog_internal.h
@@ -233,7 +240,7 @@ Types from src/include/access/xlog_internal.h
 /* check that the given size is a valid wal_segment_size */
 #define IsPowerOf2(x) (x > 0 && ((x) & ((x)-1)) == 0)
 #define IsValidWalSegSize(size) \
-	 (IsPowerOf2(size) && \
-	 ((size) >= WalSegMinSize && (size) <= WalSegMaxSize))
+     (IsPowerOf2(size) && \
+     ((size) >= WalSegMinSize && (size) <= WalSegMaxSize))
 
 #endif
