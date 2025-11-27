@@ -554,7 +554,7 @@ testRun(void)
                     "content-length:%zu\r\n"
                     "\r\n"
                     "{\"access_token\":\"test-access-token-12345\",\"expires_in\":\"3600\"}",
-                    strlen("{\"access_token\":\"test-access-token-12345\",\"expires_in\":\"3600\"}"));
+                    sizeof("{\"access_token\":\"test-access-token-12345\",\"expires_in\":\"3600\"}") - 1);
                 hrnServerScriptReply(credService, tokenResponse);
 
                 // Set expiration time to 0 to force token fetch
