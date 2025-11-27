@@ -562,7 +562,7 @@ eval
         }
 
         # Batch files to avoid command-line length issues
-        my $batchSize = 100;
+        my $batchSize = 20;
         my $exitStatus = 0;
         for (my $i = 0; $i < scalar(@fileList); $i += $batchSize) {
             my @batch = @fileList[$i .. ($i + $batchSize - 1 < $#fileList ? $i + $batchSize - 1 : $#fileList)];
