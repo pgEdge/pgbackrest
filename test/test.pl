@@ -564,11 +564,14 @@ eval
         # Batch files to avoid command-line length issues
         my $batchSize = 20;
         my $exitStatus = 0;
-        for (my $i = 0; $i < scalar(@fileList); $i += $batchSize) {
-            my @batch = @fileList[$i .. ($i + $batchSize - 1 < $#fileList ? $i + $batchSize - 1 : $#fileList)];
+        my $totalFiles = scalar(@fileList);
+        for (my $i = 0; $i < $totalFiles; $i += $batchSize) {
+            my @batch;
+            for (my $j = $i; $j < $i + $batchSize && $j < $totalFiles; $j++) {
+                push @batch, $fileList[$j];
+            }
             my $strCommand = $strBaseCommand . ' ' . join(' ', @batch);
             my $out = executeTest($strCommand . " 2>&1");
-            # If any batch fails, set exitStatus to nonzero
             $exitStatus ||= ($? >> 8);
         }
         if ($exitStatus != 0) {
