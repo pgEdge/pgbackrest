@@ -219,7 +219,15 @@ sub endRetry
 
     if ($iExitStatus != 0 || ($self->{iExpectedExitStatus} != 0 && $iExitStatus != $self->{iExpectedExitStatus}))
     {
-        if ($self->{bSuppressError})
+        # Special handling for uncrustify exit code 125 (command-line error or file list issue)
+        if ($iExitStatus == 125 && $self->{strCommand} =~ /uncrustify/) {
+            confess &log(ERROR, "uncrustify returned exit code 125: possible command-line/file list error.\n" .
+                "This usually means the file list is empty, paths are invalid, or the command line is too long for the shell.\n" .
+                "STDOUT (last 10,000 characters):\n" .
+                ($self->{strOutLog} ne '' ? substr($self->{strOutLog}, length($self->{strOutLog}) > 10000 ? length($self->{strOutLog}) - 10000 : 0) : '') .
+                ($self->{strErrorLog} ne '' ? "STDERR:\n$self->{strErrorLog}" : ''));
+        }
+        elsif ($self->{bSuppressError})
         {
             &log(DEBUG, "suppressed error was ${iExitStatus}");
 
