@@ -5367,7 +5367,7 @@ static const ParseRuleOption parseRuleOption[CFG_OPTION_TOTAL] =
         PARSE_RULE_OPTION_NAME("repo-azure-key"),                                                              // opt/repo-azure-key
         PARSE_RULE_OPTION_TYPE(String),                                                                        // opt/repo-azure-key
         PARSE_RULE_OPTION_RESET(true),                                                                         // opt/repo-azure-key
-        PARSE_RULE_OPTION_REQUIRED(true),                                                                      // opt/repo-azure-key
+        PARSE_RULE_OPTION_REQUIRED(false),                                                                     // opt/repo-azure-key
         PARSE_RULE_OPTION_SECTION(Global),                                                                     // opt/repo-azure-key
         PARSE_RULE_OPTION_SECURE(true),                                                                        // opt/repo-azure-key
         PARSE_RULE_OPTION_GROUP_ID(Repo),                                                                      // opt/repo-azure-key
