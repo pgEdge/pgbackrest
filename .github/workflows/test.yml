@@ -153,6 +153,9 @@ jobs:
         with:
           path: pgbackrest
 
+      - name: Print Uncrustify Version
+        run: uncrustify --version
+
       - name: Check
         run: |
           cd ${HOME?} && ${GITHUB_WORKSPACE?}/pgbackrest/test/ci.pl test --param=code-format-check
