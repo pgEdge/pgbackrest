@@ -538,16 +538,16 @@ eval
 
         my $hRepoManifest = $oStorageTest->manifest($strRepoCachePath);
         my $hManifest = $oStorageBackRest->manifest('');
-        my $strCommand =
-            "uncrustify -c ${strBackRestBase}/test/uncrustify.cfg" .
+        my $strBaseCommand = "uncrustify -c ${strBackRestBase}/test/uncrustify.cfg" .
             ($bCodeFormatCheck ? ' --check' : ' --replace --no-backup');
 
+        my @fileList;
         foreach my $strFile (sort(keys(%{$hManifest})))
         {
             # Skip non-C files
             next if $hManifest->{$strFile}{type} ne 'f' || ($strFile !~ /\.c$/ && $strFile !~ /\.h$/);
 
-            # Skip files that do are not version controlled
+            # Skip files that are not version controlled
             next if !defined($hRepoManifest->{$strFile});
 
             # Skip specific file
@@ -558,10 +558,22 @@ eval
                 $strFile eq 'src/postgres/interface/static.vendor.h' ||
                 $strFile eq 'src/postgres/interface/version.vendor.h';
 
-            $strCommand .= " ${strBackRestBase}/${strFile}";
+            push @fileList, "${strBackRestBase}/${strFile}";
         }
 
-        executeTest($strCommand . " 2>&1");
+        # Batch files to avoid command-line length issues
+        my $batchSize = 100;
+        my $exitStatus = 0;
+        for (my $i = 0; $i < scalar(@fileList); $i += $batchSize) {
+            my @batch = @fileList[$i .. ($i + $batchSize - 1 < $#fileList ? $i + $batchSize - 1 : $#fileList)];
+            my $strCommand = $strBaseCommand . ' ' . join(' ', @batch);
+            my $out = executeTest($strCommand . " 2>&1");
+            # If any batch fails, set exitStatus to nonzero
+            $exitStatus ||= ($? >> 8);
+        }
+        if ($exitStatus != 0) {
+            confess &log(ERROR, "uncrustify failed on one or more batches. See output above.");
+        }
 
         # Check execute permissions to make sure nothing got munged
         foreach my $strFile (sort(keys(%{$hManifest})))
