@@ -2818,6 +2818,14 @@ cfgParse(const Storage *const storage, const unsigned int argListSize, const cha
                         configOptionValue->defaultValue = optionalRules.defaultRaw;
                         configOptionValue->display = optionalRules.defaultRaw;
                     }
+                    // Fully reinitialize since it might have been left partially set if dependency was not resolved
+                    *configOptionValue = (ConfigOptionValue)
+                    {
+                        .set = true,
+                        .value = dependResult.defaultValue,
+                        .defaultValue = optionalRules.defaultRaw,
+                        .display = optionalRules.defaultRaw,
+                    };
                 }
 
                 pckReadFree(optionalRules.pack);
